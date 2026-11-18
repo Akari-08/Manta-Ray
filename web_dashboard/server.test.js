@@ -1,0 +1,19 @@
+const { test } = require('node:test');
+const assert = require('node:assert/strict');
+const { createServer } = require('./server');
+
+test('serves only dashboard assets', async (t) => {
+  const server = createServer();
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+  t.after(() => new Promise((resolve) => server.close(resolve)));
+  const base = `http://127.0.0.1:${server.address().port}`;
+
+  for (const [path, type] of [['/', 'text/html'], ['/styles.css', 'text/css'], ['/app.js', 'text/javascript']]) {
+    const response = await fetch(base + path);
+    assert.equal(response.status, 200);
+    assert.match(response.headers.get('content-type'), new RegExp(type));
+    assert.ok((await response.text()).length > 0);
+  }
+  assert.equal((await fetch(`${base}/server.js`)).status, 404);
+  assert.equal((await fetch(`${base}/`, { method: 'POST' })).status, 404);
+});

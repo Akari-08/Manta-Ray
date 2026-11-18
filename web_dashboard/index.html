@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#081412">
+  <title>Manta Ray | Survey Dashboard</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=DM+Sans:wght@400;500;600;700&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/styles.css">
+  <script src="/app.js" defer></script>
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="/" aria-label="Manta Ray dashboard home">
+      <span class="brand-mark" aria-hidden="true"><svg viewBox="0 0 40 28" fill="none"><path d="M20 23c-2-5-6-9-16-12 6-1 10-4 14-8l2 5 2-5c4 4 8 7 14 8-10 3-14 7-16 12Zm0 0v4" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/></svg></span>
+      <span>MANTA RAY <span class="brand-divider">/</span> <span class="brand-sub">FIELD SYSTEMS</span></span>
+    </a>
+    <div class="topbar-right"><span class="prototype-label">DASHBOARD <span>01</span></span><span class="connection"><span class="status-dot"></span> OFFLINE</span></div>
+  </header>
+
+  <main class="workspace">
+    <div class="page-heading">
+      <div>
+        <div class="eyebrow"><span class="eyebrow-line"></span> MISSION CONTROL <span class="eyebrow-separator">/</span> OVERVIEW</div>
+        <h1>A window into <em>the water.</em></h1>
+        <p>Survey footage, environmental observations, and vehicle controls in one place.</p>
+      </div>
+      <div class="heading-aside"><span class="aside-label">WORKSPACE STATUS</span><span><span class="status-dot"></span> Awaiting connection</span></div>
+    </div>
+
+    <div class="workspace-bar"><div><span class="section-number">01 /</span> SURVEY WORKSPACE</div><div class="layout-hint"><span class="grip-icon" aria-hidden="true">&#8942;&#8942;</span> Drag panels to rearrange <span class="hint-divider">/</span> or use arrow buttons</div></div>
+
+    <div class="dashboard-grid" id="dashboard-grid">
+      <section class="panel video-panel" data-panel="video" aria-labelledby="video-title">
+        <div class="panel-header" draggable="true">
+          <div class="panel-heading"><span class="panel-index">01</span><div><h2 id="video-title">Survey playback</h2><p>CAMERA FEED <span class="tiny-separator">/</span> VISUAL REFERENCE</p></div></div>
+          <div class="panel-actions"><span class="panel-badge"><span class="status-dot"></span> NO SIGNAL</span><button class="move-panel" data-direction="-1" aria-label="Move Survey playback earlier">&#8592;</button><button class="move-panel" data-direction="1" aria-label="Move Survey playback later">&#8594;</button><span class="drag-handle" aria-hidden="true">&#8942;&#8942;</span></div>
+        </div>
+        <div class="video-stage" id="video-stage">
+          <div class="video-placeholder" id="video-placeholder">
+            <div class="viewfinder-corner top-left"></div><div class="viewfinder-corner top-right"></div><div class="viewfinder-corner bottom-left"></div><div class="viewfinder-corner bottom-right"></div>
+            <div class="stage-top"><span>CAM 01 <span class="stage-slash">/</span> SURVEY VIEW</span><span>--:--:--</span></div>
+            <div class="stage-center"><span class="camera-symbol"><svg viewBox="0 0 32 32" fill="none" aria-hidden="true"><rect x="4" y="9" width="17" height="14" rx="2" stroke="currentColor" stroke-width="1.3"/><path d="m21 13 7-4v14l-7-4" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/><path d="M9 16h7M12.5 12.5v7" stroke="currentColor" stroke-width="1.3"/></svg></span><strong>No video source connected</strong><span>Load a recording to preview your survey.</span><button class="upload-button file-trigger" type="button"><span>+</span> LOAD RECORDING</button></div>
+            <div class="stage-bottom"><span>DEPTH <b>--</b> M</span><span>COORDINATES <b>--.---- / --.----</b></span></div>
+          </div>
+          <video id="survey-video" controls playsinline hidden></video>
+        </div>
+        <input id="video-file" type="file" accept="video/*" hidden>
+        <div class="video-footer"><div><span class="footer-label">SOURCE</span><span id="video-source">No recording selected</span></div><button class="text-button file-trigger" type="button">SELECT FILE <span>&#8599;</span></button></div>
+      </section>
+
+      <section class="panel ecology-panel" data-panel="ecology" aria-labelledby="ecology-title">
+        <div class="panel-header" draggable="true">
+          <div class="panel-heading"><span class="panel-index">02</span><div><h2 id="ecology-title">Ecological analysis</h2><p>ENVIRONMENTAL OBSERVATIONS</p></div></div>
+          <div class="panel-actions"><button class="move-panel" data-direction="-1" aria-label="Move Ecological analysis earlier">&#8592;</button><button class="move-panel" data-direction="1" aria-label="Move Ecological analysis later">&#8594;</button><span class="drag-handle" aria-hidden="true">&#8942;&#8942;</span></div>
+        </div>
+        <div class="ecology-content">
+          <div class="analysis-intro"><div><span class="overline">OBSERVATION SUMMARY</span><p>Get to know the environment below.</p></div><span class="outline-tag">AWAITING DATA</span></div>
+          <div class="observation"><span class="observation-icon" aria-hidden="true">&#10035;</span><div class="observation-main"><div class="observation-title">Coral &amp; vegetation <span>01</span></div><p>Color and abundance</p><div class="empty-reading">No observations yet</div></div></div>
+          <div class="observation"><span class="observation-icon" aria-hidden="true">&#9678;</span><div class="observation-main"><div class="observation-title">Seabed &amp; substrate <span>02</span></div><p>Color, texture and notable discrepancies</p><div class="empty-reading">No observations yet</div></div></div>
+          <div class="observation"><span class="observation-icon" aria-hidden="true">&#8779;</span><div class="observation-main"><div class="observation-title">Water conditions <span>03</span></div><p>Cloudiness, turbidity and color ambience</p><div class="empty-reading">No observations yet</div></div></div>
+          <div class="observation"><span class="observation-icon" aria-hidden="true">&#10230;</span><div class="observation-main"><div class="observation-title">Marine life <span>04</span></div><p>Organism and fish species</p><div class="empty-reading">No species identified</div></div></div>
+          <div class="tds-card"><div><span class="overline">TOTAL DISSOLVED SOLIDS</span><p>Sensor reading</p></div><div class="tds-value">-- <span>ppm</span></div></div>
+        </div>
+      </section>
+
+      <section class="panel console-panel" data-panel="console" aria-labelledby="console-title">
+        <div class="panel-header" draggable="true">
+          <div class="panel-heading"><span class="panel-index">03</span><div><h2 id="console-title">Vehicle interface</h2><p>COMMANDS <span class="tiny-separator">/</span> CONFIGURATION</p></div></div>
+          <div class="panel-actions"><span class="panel-badge"><span class="status-dot"></span> DISCONNECTED</span><button class="move-panel" data-direction="-1" aria-label="Move Vehicle interface earlier">&#8592;</button><button class="move-panel" data-direction="1" aria-label="Move Vehicle interface later">&#8594;</button><span class="drag-handle" aria-hidden="true">&#8942;&#8942;</span></div>
+        </div>
+        <div class="interface-body">
+          <div class="interface-sidebar"><span class="overline">INTERFACE</span><p>A place to communicate with the vehicle and adjust its instructions.</p><div class="interface-note"><span class="note-icon">&#8505;</span> Controls are a preview. Nothing is sent to hardware.</div></div>
+          <div class="interface-main">
+            <div class="tabs" role="tablist" aria-label="Vehicle interface"><button id="terminal-tab" class="tab active" role="tab" aria-selected="true" aria-controls="terminal-view" tabindex="0">Terminal <span>01</span></button><button id="config-tab" class="tab" role="tab" aria-selected="false" aria-controls="config-view" tabindex="-1">Configuration <span>02</span></button><span class="tab-status">LOCAL PREVIEW</span></div>
+            <div id="terminal-view" class="tab-view" role="tabpanel" aria-labelledby="terminal-tab"><div class="terminal-output" id="terminal-output" aria-live="polite"><p><span class="terminal-muted">// MANTA RAY INTERFACE</span></p><p>Connection not established.</p><p class="terminal-muted">Command execution will be available after integration.</p></div><form id="terminal-form" class="terminal-input"><label for="command-input" aria-label="Preview command">&#8250;_</label><input id="command-input" autocomplete="off" placeholder="Type a command to preview..." maxlength="300"><button type="submit">ENTER &#8629;</button></form></div>
+            <div id="config-view" class="tab-view config-view" role="tabpanel" aria-labelledby="config-tab" hidden><div><span class="overline">CONFIGURATION BOARD</span><h3>Instructions, eventually.</h3><p>Hardware settings and programmable instructions will live here once the vehicle interface is defined.</p></div><div class="config-placeholder"><span>01</span><div><strong>No configuration connected</strong><p>Waiting for hardware integration</p></div><span class="outline-tag">COMING LATER</span></div></div>
+          </div>
+        </div>
+      </section>
+    </div>
+    <div class="workspace-footer"><span>MANTA RAY <span class="footer-slash">/</span> SURVEY DASHBOARD</span><span>BUILT FOR A CLOSER LOOK <span class="footer-star">&#10035;</span></span></div>
+    <p class="sr-only" id="layout-announcement" aria-live="polite"></p>
+  </main>
+</body>
+</html>

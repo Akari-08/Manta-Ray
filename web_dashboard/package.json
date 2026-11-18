@@ -1,0 +1,13 @@
+{
+  "name": "manta-ray-dashboard",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Local dashboard prototype for the Manta Ray survey project",
+  "scripts": {
+    "start": "node server.js",
+    "test": "node --test"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
