@@ -1,8 +1,8 @@
 # Local ESP32 telemetry and camera setup
 
-The existing Node dashboard server now owns live robot state, recent history and command delivery. The robot opens one authenticated WebSocket to it. Browsers subscribe to that server. JPEG/MJPEG runs on separate ESP32 HTTP listeners, so video never enters the telemetry WebSocket. The dashboard samples timestamped JPEGs at up to 2 fps; the device also exposes a direct MJPEG stream at roughly 6 fps. No cloud service is used, including for fonts.
+The existing Node dashboard server now owns live robot state, recent history and command delivery. The robot opens one authenticated WebSocket to it. Browsers subscribe to that server. JPEG/MJPEG runs on separate ESP32 HTTP listeners, so video never enters the telemetry WebSocket. The dashboard samples timestamped JPEGs at up to 2 fps; the device also exposes a direct MJPEG stream at roughly 6 fps. The browser-device location map asks for location permission on load and uses online OpenFreeMap tiles only after permission; other functions remain local.
 
-The older Python `manta_ray.connectivity` depth/surfacing SITL example remains separate. Its simulated depth is **not** a hardware sensor and is never shown in the live dashboard. There is no live position map, GPS, depth, battery voltage, compass heading or measured servo feedback in this integration.
+The older Python `manta_ray.connectivity` depth/surfacing SITL example remains separate. Its simulated depth is **not** a hardware sensor and is never shown in the live dashboard. The optional map shows the dashboard device's browser location, not the robot. There is no robot GPS, depth, battery voltage, compass heading or measured servo feedback in this integration.
 
 ## Run without hardware
 

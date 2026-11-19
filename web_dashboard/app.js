@@ -1,4 +1,7 @@
 import { LiveClient } from './live-client.js';
+import { parseCommandLine, buildCommand, finSettingsConfirmed } from './commands.mjs';
+import { createFishView } from './fish-view.mjs';
+import { createLocationMap } from './location-map.mjs';
 const grid = document.querySelector('#dashboard-grid');
 const announcement = document.querySelector('#layout-announcement');
 const panels = [...grid.querySelectorAll('.panel')];
@@ -20,8 +23,9 @@ function updateLayout(message) {
 
 try {
   const saved = JSON.parse(localStorage.getItem(storageKey));
-  if (Array.isArray(saved) && saved.length === panels.length && new Set(saved).size === panels.length && saved.every((id) => panels.some((panel) => panel.dataset.panel === id))) {
+  if (Array.isArray(saved) && new Set(saved).size === saved.length && saved.every((id) => panels.some((panel) => panel.dataset.panel === id))) {
     saved.forEach((id) => grid.append(panels.find((panel) => panel.dataset.panel === id)));
+    panels.filter((panel) => !saved.includes(panel.dataset.panel)).forEach((panel) => grid.append(panel));
   }
 } catch {
   // Ignore unavailable or invalid saved layouts.
@@ -120,13 +124,22 @@ tabs.forEach((tab, index) => {
 
 const client = new LiveClient();
 const $ = id => document.getElementById(id);
-let recording = false, transport = 'connecting', lastState = null, samples = [], lastSeq = null, lastUptime = null, cameraBusy = false, frameUrl = null, pending = false;
+const fishView = createFishView($('fish-stage'), $('model-badge'), $('model-readout'));
+createLocationMap();
+let recording = false, transport = 'connecting', lastState = null, samples = [], lastSeq = null, lastUptime = null, cameraBusy = false, frameUrl = null, pending = false, finSync = null, localLogId = 0;
 const format = r => r?.value === null || !r ? `Unavailable: ${r?.reason || 'no telemetry'}` : `${Array.isArray(r.value) ? r.value.map(v => v.toFixed(2)).join(' / ') : r.value.toFixed(2)} ${r.unit}`;
 const commandLines = new Map();
 function logCommand(c) {
-  commandLines.set(c.id, `${c.action} · ${c.id.slice(0, 8)} · ${c.status}${c.reason ? `: ${c.reason}` : ''}`);
+  const previous = commandLines.get(c.id);
+  const label = c.label || previous?.label || c.action;
+  commandLines.set(c.id, { label, status: c.status, text: `${label} · ${c.id.slice(0, 8)} · ${c.status}${c.reason ? `: ${c.reason}` : ''}` });
   while (commandLines.size > 20) commandLines.delete(commandLines.keys().next().value);
-  $('terminal-output').replaceChildren(...[...commandLines.values()].reverse().map(text => { const p = document.createElement('p'); p.textContent = text; return p; }));
+  $('terminal-output').replaceChildren(...[...commandLines.values()].reverse().map(({ text }) => { const p = document.createElement('p'); p.textContent = text; return p; }));
+}
+function checkFinSync(s) {
+  if (!finSync) return;
+  if (s?.stale || !s?.telemetry) { finSync = null; return; }
+  if (finSettingsConfirmed(s, finSync.seq, finSync.args)) finSync = null;
 }
 function renderControls() {
   const fresh = transport === 'connected' && lastState && !lastState.stale;
@@ -150,6 +163,7 @@ function renderStatus() {
   $('data-warning').textContent = warnings.join(' ') || 'Hardware telemetry connected. Positions below are commanded, without servo feedback.';
   $('data-warning').classList.toggle('healthy', !warnings.length);
   $('last-update').textContent = s?.received_at ? `${new Date(s.received_at).toLocaleTimeString()} · ${((s.age_ms || 0) / 1000).toFixed(1)} s old` : 'No telemetry received';
+  fishView.update(s, transport === 'connected');
   renderControls();
 }
 function chart() {
@@ -174,7 +188,7 @@ function chart() {
   $('history-caption').textContent = values.length ? 'Roll: lime / pitch: blue. Acceleration-derived estimates; fin motion can bias them.' : 'No valid attitude samples. Missing data is not plotted as zero.';
 }
 function render(s) {
-  lastState = s; renderStatus(); const t = s.telemetry; if (!t) return;
+  lastState = s; checkFinSync(s); renderStatus(); const t = s.telemetry; if (!t) return;
   $('robot-identity').textContent = `${t.robot_id} · ${t.firmware_version} · #${t.seq}`;
   $('wifi-reading').textContent = `Wi-Fi ${format(t.wifi.rssi)} · uptime ${(t.uptime_ms / 1000).toFixed(1)} s · reconnects ${t.wifi.reconnects}`;
   $('operating-mode').textContent = t.mode.toUpperCase();
@@ -216,19 +230,43 @@ client.addEventListener('transport', e => { transport = e.detail; renderStatus()
 client.addEventListener('control', renderControls);
 client.addEventListener('error', e => { $('command-feedback').textContent = e.detail; });
 client.addEventListener('command', e => logCommand(e.detail));
-client.addEventListener('sent', e => { if (!commandLines.has(e.detail.id)) logCommand(e.detail); });
+client.addEventListener('sent', e => { const current = commandLines.get(e.detail.id); if (!current || current.status === 'sending') logCommand(e.detail); });
 $('enable-control').addEventListener('click', async () => { try { await client.enable($('control-token').value.trim()); $('command-feedback').textContent = 'Heartbeat enabled. No movement requested.'; } catch (error) { $('command-feedback').textContent = error.message; } });
 $('disable-control').addEventListener('click', () => client.disable());
-async function command(action, args) {
+async function command(action, args = {}, label = action) {
+  if (pending) { logCommand({ id: `local-${++localLogId}`, action, label, status: 'not sent', reason: 'Wait for the pending command' }); return; }
+  const id = [...crypto.getRandomValues(new Uint8Array(16))].map(v => v.toString(16).padStart(2, '0')).join('');
+  const seq = lastState?.telemetry?.seq;
+  logCommand({ id, action, label, status: 'sending' });
   pending = true; renderControls(); $('command-feedback').textContent = `${action}: sending; awaiting device acknowledgement…`;
-  try { const result = await client.command(action, args); logCommand(result); $('command-feedback').textContent = `${result.action}: ${result.status}${result.reason ? ` — ${result.reason}` : ' (command accepted by controller; physical motion is not measured)'}`; }
-  catch (error) { $('command-feedback').textContent = error.message; }
+  try {
+    const result = await client.command(action, args, id); logCommand(result);
+    if (action === 'set_fin' && result.status === 'applied' && Number.isSafeInteger(seq)) { finSync = { seq, args }; checkFinSync(lastState); }
+    $('command-feedback').textContent = `${result.action}: ${result.status}${result.reason ? ` — ${result.reason}` : ' (command accepted by controller; physical motion is not measured)'}`;
+  }
+  catch (error) { logCommand({ id, action, status: 'error', reason: `${error.message}. If delivery is uncertain, check telemetry before retrying` }); $('command-feedback').textContent = error.message; }
   finally { pending = false; renderControls(); }
 }
 $('start-flapping').addEventListener('click', () => command('start'));
 $('stop-flapping').addEventListener('click', () => command('stop'));
 $('fin-form').addEventListener('submit', event => { event.preventDefault(); command('set_fin', { amplitude_deg: Number($('amplitude').value), cycle_hz: Number($('cycle-rate').value), centre_deg: Number($('centre').value) }); });
 $('syringe-form').addEventListener('submit', event => { event.preventDefault(); command('set_syringe', { target_deg: Number($('syringe-target').value) }); });
+$('command-line-form').addEventListener('submit', event => {
+  event.preventDefault();
+  const input = $('command-line'), line = input.value.trim();
+  if (!line) return;
+  input.value = '';
+  try {
+    const { name, params } = parseCommandLine(line);
+    const fresh = transport === 'connected' && lastState && !lastState.stale;
+    if (!fresh || !client.token) throw new Error('Fresh telemetry and a control token are required');
+    if (name !== 'stopflap' && (!client.active || !lastState.telemetry?.control.outputs_enabled)) throw new Error('Enable controls and configured servo outputs first');
+    if (name === 'setsyringe' && lastState.telemetry.control.actuator_state === 'disabled') throw new Error('Syringe model, limits and output not configured');
+    if (name === 'setfin' && finSync) throw new Error('Waiting for telemetry to confirm the last applied fin settings');
+    const { action, args } = buildCommand(name, params, lastState);
+    command(action, args, line);
+  } catch (error) { logCommand({ id: `local-${++localLogId}`, action: 'command', label: line, status: 'not sent', reason: error.message }); }
+});
 document.addEventListener('visibilitychange', () => { if (document.hidden) client.disable(); });
 window.addEventListener('pagehide', () => client.stop());
 client.start(); setInterval(frame, 500);

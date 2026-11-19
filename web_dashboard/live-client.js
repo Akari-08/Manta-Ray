@@ -40,8 +40,7 @@ export class LiveClient extends EventTarget {
     this.active = false; this.emit('control', false);
     this.request('/api/control/heartbeat', 'DELETE').catch(() => {});
   }
-  async command(action, args = {}) {
-    const id = [...crypto.getRandomValues(new Uint8Array(16))].map(v => v.toString(16).padStart(2, '0')).join('');
+  async command(action, args = {}, id = [...crypto.getRandomValues(new Uint8Array(16))].map(v => v.toString(16).padStart(2, '0')).join('')) {
     const command = { schema_version: 1, id, action, args, ttl_ms: 1500 };
     const sent = await this.request('/api/commands', 'POST', command);
     this.emit('sent', sent);

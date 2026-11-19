@@ -8,7 +8,7 @@ test('serves only dashboard assets', async (t) => {
   t.after(() => server.shutdown());
   const base = `http://127.0.0.1:${server.address().port}`;
 
-  for (const [path, type] of [['/', 'text/html'], ['/styles.css', 'text/css'], ['/app.js', 'text/javascript']]) {
+  for (const [path, type] of [['/', 'text/html'], ['/styles.css', 'text/css'], ['/app.js', 'text/javascript'], ['/commands.mjs', 'text/javascript'], ['/motion-model.mjs', 'text/javascript'], ['/fish-view.mjs', 'text/javascript'], ['/location-map.mjs', 'text/javascript'], ['/vendor/three.module.js', 'text/javascript'], ['/vendor/three.core.js', 'text/javascript'], ['/vendor/maplibre-gl.mjs', 'text/javascript'], ['/vendor/maplibre-gl-worker.mjs', 'text/javascript'], ['/vendor/maplibre-gl.css', 'text/css']]) {
     const response = await fetch(base + path);
     assert.equal(response.status, 200);
     assert.match(response.headers.get('content-type'), new RegExp(type));

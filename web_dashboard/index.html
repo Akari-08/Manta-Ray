@@ -6,6 +6,7 @@
   <meta name="theme-color" content="#081412">
   <title>Manta Ray | Survey Dashboard</title>
   <link rel="stylesheet" href="/styles.css">
+  <link rel="stylesheet" href="/vendor/maplibre-gl.css">
   <script src="/app.js" type="module"></script>
 </head>
 <body>
@@ -64,9 +65,25 @@
         </div>
       </section>
 
+      <section class="panel motion-panel" data-panel="motion" aria-labelledby="motion-title">
+        <div class="panel-header" draggable="true">
+          <div class="panel-heading"><span class="panel-index">03</span><div><h2 id="motion-title">Motion model</h2><p>IMU <span class="tiny-separator">/</span> FIN COMMANDS</p></div></div>
+          <div class="panel-actions"><span class="panel-badge" id="model-badge">AWAITING IMU</span><button class="move-panel" data-direction="-1" aria-label="Move motion model earlier">&#8592;</button><button class="move-panel" data-direction="1" aria-label="Move motion model later">&#8594;</button><span class="drag-handle" aria-hidden="true">&#8942;&#8942;</span></div>
+        </div>
+        <div class="motion-body"><div id="fish-stage" class="fish-stage" role="img" aria-label="Three-dimensional fish model with a sensor acceleration arrow"></div><p id="model-readout" role="status">Waiting for fresh telemetry.</p><p class="panel-disclaimer">Fish is illustrative. Roll/pitch are gravity estimates; relative gyro yaw drifts. Sensor axes assume aligned mounting. Arrow includes gravity. Flapping animation is an estimate, not measured fin positions.</p></div>
+      </section>
+
+      <section class="panel map-panel" data-panel="map" aria-labelledby="map-title">
+        <div class="panel-header" draggable="true">
+          <div class="panel-heading"><span class="panel-index">04</span><div><h2 id="map-title">Map</h2><p>LOCATION</p></div></div>
+          <div class="panel-actions"><button class="move-panel" data-direction="-1" aria-label="Move location map earlier">&#8592;</button><button class="move-panel" data-direction="1" aria-label="Move location map later">&#8594;</button><span class="drag-handle" aria-hidden="true">&#8942;&#8942;</span></div>
+        </div>
+        <div class="map-body"><div class="map-stage"><div id="location-map" aria-label="Location map"></div><div id="map-placeholder" class="map-placeholder" role="status">Waiting for location permission…</div></div></div>
+      </section>
+
       <section class="panel console-panel" data-panel="console" aria-labelledby="console-title">
         <div class="panel-header" draggable="true">
-          <div class="panel-heading"><span class="panel-index">03</span><div><h2 id="console-title">Vehicle interface</h2><p>COMMANDS <span class="tiny-separator">/</span> CONFIGURATION</p></div></div>
+          <div class="panel-heading"><span class="panel-index">05</span><div><h2 id="console-title">Vehicle interface</h2><p>COMMANDS <span class="tiny-separator">/</span> CONFIGURATION</p></div></div>
           <div class="panel-actions"><span class="panel-badge" id="control-status">CONTROLS LOCKED</span><button class="move-panel" data-direction="-1" aria-label="Move Vehicle interface earlier">&#8592;</button><button class="move-panel" data-direction="1" aria-label="Move Vehicle interface later">&#8594;</button><span class="drag-handle" aria-hidden="true">&#8942;&#8942;</span></div>
         </div>
         <div class="interface-body">
@@ -80,12 +97,16 @@
               <form id="syringe-form" class="controls-form"><label>Syringe target · deg<input id="syringe-target" type="number" min="0" max="180" step="1" value="90" required></label><button id="set-syringe" type="submit" disabled>SET SYRINGE</button><span id="syringe-reason">Disabled: model unconfirmed</span></form>
               <p id="command-feedback" role="status">Controls locked. No movement requested.</p>
             </div>
-            <div id="config-view" class="tab-view" role="tabpanel" aria-labelledby="config-tab" hidden><div class="terminal-output" id="terminal-output" aria-live="polite"><p>No commands sent this session.</p></div></div>
+            <div id="config-view" class="tab-view" role="tabpanel" aria-labelledby="config-tab" hidden>
+              <p class="terminal-help" id="terminal-help">Commands: <code>setfin &lt;amplitude|cr|center&gt; &lt;value&gt;</code> · <code>setsyringe &lt;degrees&gt;</code> · <code>startflap</code> · <code>stopflap</code>. Enable controls and keep this tab visible. Software stop does not cut power.</p>
+              <div class="terminal-output" id="terminal-output" aria-live="polite"><p>No commands sent this session.</p></div>
+              <form id="command-line-form" class="terminal-input"><label for="command-line">&gt;</label><input id="command-line" type="text" maxlength="200" autocomplete="off" spellcheck="false" aria-label="Vehicle command" aria-describedby="terminal-help" placeholder="e.g. setfin amplitude 20"><button type="submit">SEND &#8594;</button></form>
+            </div>
           </div>
         </div>
       </section>
     </div>
-    <div class="workspace-footer"><span>MANTA RAY <span class="footer-slash">/</span> SURVEY DASHBOARD</span><span>BUILT FOR A CLOSER LOOK <span class="footer-star">&#10035;</span></span></div>
+    <div class="workspace-footer"><span>MANTA RAY <span class="footer-slash">/</span> SURVEY DASHBOARD</span><span class="map-credit">Map: <a href="https://openfreemap.org/">OpenFreeMap</a> · © <a href="https://www.openmaptiles.org/">OpenMapTiles</a> · © <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors</span><span>BUILT FOR A CLOSER LOOK <span class="footer-star">&#10035;</span></span></div>
     <p class="sr-only" id="layout-announcement" aria-live="polite"></p>
   </main>
 </body>

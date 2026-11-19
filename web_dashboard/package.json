@@ -12,5 +12,9 @@
   "engines": {
     "node": ">=22"
   },
-  "dependencies": { "ws": "^8.18.3" }
+  "dependencies": {
+    "maplibre-gl": "^6.19.0",
+    "three": "^0.187.0",
+    "ws": "^8.18.3"
+  }
 }

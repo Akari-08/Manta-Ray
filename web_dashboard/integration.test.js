@@ -55,6 +55,26 @@ test('authentication, REST, live subscription, applied ACK and bounded history',
   await until(async () => (await f.get('/api/history')).samples.length === 3);
   assert.equal((await f.get('/api/history')).samples.length, 3);
 });
+test('CLI translation sends a partial fin update through the authenticated protocol', async t => {
+  const f = await fixture(t);
+  const { parseCommandLine, buildCommand } = await import('./commands.mjs');
+  const s = await f.get('/api/state');
+  const { name, params } = parseCommandLine('setfin cr 1.2');
+  const translated = buildCommand(name, params, s);
+  assert.equal((await f.post('/api/commands', command(translated.action, translated.args))).status, 409);
+  await f.post('/api/control/heartbeat', {});
+  await delay(70);
+  const c = command(translated.action, translated.args);
+  assert.equal((await f.post('/api/commands', c)).status, 202);
+  const result = await until(async () => {
+    const r = await fetch(`${f.base}/api/commands/${c.id}`, { headers: { Authorization: `Bearer ${CONTROL}` } }).then(r => r.json());
+    return r.status !== 'pending' && r;
+  });
+  assert.equal(result.status, 'applied');
+  assert.equal(f.sim.control.cycle_hz, 1.2);
+  assert.equal(f.sim.control.amplitude_deg, s.telemetry.control.amplitude_deg);
+  assert.equal(f.sim.control.centre_deg, s.telemetry.control.centre_deg);
+});
 test('stale data blocks commands and disconnect stops simulator fins without replay', async t => {
   const f = await fixture(t);
   await f.post('/api/control/heartbeat', {}); await delay(70);

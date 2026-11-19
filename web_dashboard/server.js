@@ -6,7 +6,7 @@ const { randomUUID, timingSafeEqual } = require('node:crypto');
 const { isIP } = require('node:net');
 const { WebSocketServer, WebSocket } = require('ws');
 const { VERSION, LIMITS, validateTelemetry, validateCommand, validateAck } = require('./protocol');
-const files = { '/': ['index.html', 'text/html'], '/styles.css': ['styles.css', 'text/css'], '/app.js': ['app.js', 'text/javascript'], '/live-client.js': ['live-client.js', 'text/javascript'] };
+const files = { '/': ['index.html', 'text/html'], '/styles.css': ['styles.css', 'text/css'], '/app.js': ['app.js', 'text/javascript'], '/live-client.js': ['live-client.js', 'text/javascript'], '/commands.mjs': ['commands.mjs', 'text/javascript'], '/motion-model.mjs': ['motion-model.mjs', 'text/javascript'], '/fish-view.mjs': ['fish-view.mjs', 'text/javascript'], '/location-map.mjs': ['location-map.mjs', 'text/javascript'], '/vendor/three.module.js': ['node_modules/three/build/three.module.js', 'text/javascript'], '/vendor/three.core.js': ['node_modules/three/build/three.core.js', 'text/javascript'], '/vendor/maplibre-gl.mjs': ['node_modules/maplibre-gl/dist/maplibre-gl.mjs', 'text/javascript'], '/vendor/maplibre-gl-worker.mjs': ['node_modules/maplibre-gl/dist/maplibre-gl-worker.mjs', 'text/javascript'], '/vendor/maplibre-gl.css': ['node_modules/maplibre-gl/dist/maplibre-gl.css', 'text/css'] };
 const equal = (a, b) => typeof a === 'string' && typeof b === 'string' && a.length > 0 && Buffer.byteLength(a) === Buffer.byteLength(b) && timingSafeEqual(Buffer.from(a), Buffer.from(b));
 const normalizeIP = ip => ip?.replace(/^::ffff:/, '');
 function localIP(ip) {
@@ -81,7 +81,7 @@ function createServer(options = {}) {
       if (req.headers.origin && req.headers.origin !== `http://${req.headers.host}`) return json(res, 403, { error: 'Cross-origin requests disabled' });
       if (req.method === 'GET' && Object.hasOwn(files, u.pathname)) {
         const [file, type] = files[u.pathname], content = await readFile(path.join(__dirname, file));
-        res.writeHead(200, { 'Content-Type': `${type}; charset=utf-8`, 'Content-Security-Policy': "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' http: blob:; media-src 'self' blob:; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'", 'Cache-Control': 'no-cache' }); res.end(content); return;
+        res.writeHead(200, { 'Content-Type': `${type}; charset=utf-8`, 'Content-Security-Policy': "default-src 'self'; script-src 'self'; worker-src 'self'; style-src 'self'; img-src 'self' http: blob: data:; media-src 'self' blob:; connect-src 'self' https://tiles.openfreemap.org; frame-ancestors 'none'; base-uri 'none'", 'Cache-Control': 'no-cache' }); res.end(content); return;
       }
       if (req.method === 'GET' && u.pathname === '/api/state') return json(res, 200, state());
       if (req.method === 'GET' && u.pathname === '/api/history') return json(res, 200, { schema_version: VERSION, samples: history });
