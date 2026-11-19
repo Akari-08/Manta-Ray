@@ -51,6 +51,12 @@ python -m venv .venv
 
 See the [survey software guide](docs/software.md) for video analysis, reconstruction, and command testing.
 
+The [live ESP32 connection guide](docs/live-connection.md) covers the local Node backend,
+dashboard, labelled ESP32 simulator, camera/CV interface and Freenove WROVER firmware.
+Start there for hardware telemetry and fin controls; the older Python depth/surfacing demo
+is a separate simulation. See the [wire protocol](docs/telemetry-protocol.md) and
+[actual integration validation](docs/live-validation.md) for scope and test evidence.
+
 The [scientific method](docs/scientific-method.md) defines the camera and TDS indicators and their validation.
 
 See the [validation evidence](docs/validation-report.md) for software tests, stock-media processing, and real COLMAP reconstruction results.

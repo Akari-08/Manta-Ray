@@ -1,0 +1,112 @@
+{
+  "schema_version": 1,
+  "type": "telemetry",
+  "robot_id": "manta-01",
+  "firmware_version": "simulator-1.0",
+  "seq": 0,
+  "uptime_ms": 0,
+  "source": "simulator",
+  "device_time": {
+    "value": null,
+    "unit": "unix_ms",
+    "reason": "Simulator uses uptime only"
+  },
+  "wifi": {
+    "rssi": {
+      "value": -50,
+      "unit": "dBm",
+      "reason": null
+    },
+    "reconnects": 0
+  },
+  "imu": {
+    "acceleration": {
+      "value": [
+        0.6840773232428263,
+        0,
+        9.7
+      ],
+      "unit": "m/s^2",
+      "reason": null
+    },
+    "angular_velocity": {
+      "value": [
+        4,
+        0,
+        0
+      ],
+      "unit": "deg/s",
+      "reason": null
+    },
+    "roll_estimate": {
+      "value": 0,
+      "unit": "deg",
+      "reason": null
+    },
+    "pitch_estimate": {
+      "value": 4,
+      "unit": "deg",
+      "reason": null
+    },
+    "calibration_state": "simulated"
+  },
+  "water": {
+    "temperature": {
+      "value": null,
+      "unit": "degC",
+      "reason": "Temperature sensor model unconfirmed"
+    },
+    "tds_raw": {
+      "value": null,
+      "unit": "ADC_count",
+      "reason": "Analog interface and voltage range unconfirmed"
+    },
+    "tds_estimate": {
+      "value": null,
+      "unit": "ppm",
+      "reason": "TDS calibration unavailable"
+    },
+    "calibration_id": null
+  },
+  "control": {
+    "flapping": false,
+    "outputs_enabled": true,
+    "amplitude_deg": 20,
+    "cycle_hz": 0.5,
+    "centre_deg": 135,
+    "left_command": {
+      "value": null,
+      "unit": "deg",
+      "reason": "No command since startup"
+    },
+    "right_command": {
+      "value": null,
+      "unit": "deg",
+      "reason": "No command since startup"
+    },
+    "syringe_command": {
+      "value": null,
+      "unit": "deg",
+      "reason": "Syringe model unconfirmed"
+    },
+    "actuator_state": "disabled",
+    "disconnect_policy": "stop",
+    "heartbeat_timeout_ms": 3000
+  },
+  "camera": {
+    "available": false,
+    "reason": "Simulator camera disabled",
+    "stream_url": null,
+    "snapshot_url": null,
+    "fps": {
+      "value": null,
+      "unit": "fps",
+      "reason": "No frames measured"
+    },
+    "calibration_id": null
+  },
+  "faults": [
+    "SIMULATED DATA: not hardware measurements"
+  ],
+  "mode": "bench"
+}

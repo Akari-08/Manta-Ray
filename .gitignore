@@ -19,3 +19,7 @@ Thumbs.db
 !/outputs/.gitkeep
 /media/
 /.tools/
+node_modules/
+.npm-cache/
+firmware/manta_ray/secrets.h
+firmware/manta_ray/local_config.h

@@ -3,9 +3,9 @@ const assert = require('node:assert/strict');
 const { createServer } = require('./server');
 
 test('serves only dashboard assets', async (t) => {
-  const server = createServer();
+  const server = createServer({ deviceToken: 'test-device-token-000000000000', controlToken: 'test-control-token-00000000000' });
   await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
-  t.after(() => new Promise((resolve) => server.close(resolve)));
+  t.after(() => server.shutdown());
   const base = `http://127.0.0.1:${server.address().port}`;
 
   for (const [path, type] of [['/', 'text/html'], ['/styles.css', 'text/css'], ['/app.js', 'text/javascript']]) {

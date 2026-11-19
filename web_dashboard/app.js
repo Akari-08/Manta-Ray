@@ -1,3 +1,4 @@
+import { LiveClient } from './live-client.js';
 const grid = document.querySelector('#dashboard-grid');
 const announcement = document.querySelector('#layout-announcement');
 const panels = [...grid.querySelectorAll('.panel')];
@@ -85,6 +86,9 @@ document.querySelectorAll('.file-trigger').forEach((button) => {
 fileInput.addEventListener('change', () => {
   const file = fileInput.files[0];
   if (!file) return;
+  recording = true;
+  document.querySelector('#live-camera').hidden = true;
+  document.querySelector('#camera-status').textContent = 'RECORDING / NOT LIVE';
   if (videoUrl) URL.revokeObjectURL(videoUrl);
   videoUrl = URL.createObjectURL(file);
   video.src = videoUrl;
@@ -114,17 +118,117 @@ tabs.forEach((tab, index) => {
   });
 });
 
-document.querySelector('#terminal-form').addEventListener('submit', (event) => {
-  event.preventDefault();
-  const input = document.querySelector('#command-input');
-  const command = input.value.trim();
-  if (!command) return;
-  const output = document.querySelector('#terminal-output');
-  const line = document.createElement('p');
-  line.textContent = `> ${command}`;
-  const reply = document.createElement('p');
-  reply.className = 'terminal-muted';
-  reply.textContent = 'Preview only: no command was sent or executed.';
-  output.replaceChildren(line, reply);
-  input.value = '';
-});
+const client = new LiveClient();
+const $ = id => document.getElementById(id);
+let recording = false, transport = 'connecting', lastState = null, samples = [], lastSeq = null, lastUptime = null, cameraBusy = false, frameUrl = null, pending = false;
+const format = r => r?.value === null || !r ? `Unavailable: ${r?.reason || 'no telemetry'}` : `${Array.isArray(r.value) ? r.value.map(v => v.toFixed(2)).join(' / ') : r.value.toFixed(2)} ${r.unit}`;
+const commandLines = new Map();
+function logCommand(c) {
+  commandLines.set(c.id, `${c.action} · ${c.id.slice(0, 8)} · ${c.status}${c.reason ? `: ${c.reason}` : ''}`);
+  while (commandLines.size > 20) commandLines.delete(commandLines.keys().next().value);
+  $('terminal-output').replaceChildren(...[...commandLines.values()].reverse().map(text => { const p = document.createElement('p'); p.textContent = text; return p; }));
+}
+function renderControls() {
+  const fresh = transport === 'connected' && lastState && !lastState.stale;
+  const enabled = fresh && client.active && lastState.telemetry?.control.outputs_enabled && !pending;
+  document.querySelectorAll('[data-motion]').forEach(button => { button.disabled = !enabled; });
+  $('stop-flapping').disabled = !fresh || !client.token || pending;
+  $('set-syringe').disabled = !enabled || lastState.telemetry?.control.actuator_state === 'disabled';
+  $('enable-control').disabled = !fresh || client.active;
+  $('disable-control').disabled = !client.active;
+  $('control-status').textContent = client.active ? 'HEARTBEAT ACTIVE' : 'CONTROLS LOCKED';
+}
+function renderStatus() {
+  const s = lastState, simulated = s?.telemetry?.source === 'simulator';
+  $('source-mode').textContent = s?.telemetry ? simulated ? 'SIMULATOR / SYNTHETIC' : 'HARDWARE' : 'AWAITING DEVICE';
+  document.body.classList.toggle('simulation', !!simulated);
+  $('connection-status').textContent = transport !== 'connected' ? `BACKEND ${transport.toUpperCase()}` : `ROBOT ${s?.connection.toUpperCase()}`;
+  const warnings = [];
+  if (simulated) warnings.push('SIMULATION — synthetic motion and test-card camera. No hardware measurements.');
+  if (transport !== 'connected') warnings.push('Backend unavailable. Displayed values may be old. Controls locked.');
+  else if (s?.stale) warnings.push('Telemetry stale or robot disconnected. Displayed values are historical. Controls locked.');
+  $('data-warning').textContent = warnings.join(' ') || 'Hardware telemetry connected. Positions below are commanded, without servo feedback.';
+  $('data-warning').classList.toggle('healthy', !warnings.length);
+  $('last-update').textContent = s?.received_at ? `${new Date(s.received_at).toLocaleTimeString()} · ${((s.age_ms || 0) / 1000).toFixed(1)} s old` : 'No telemetry received';
+  renderControls();
+}
+function chart() {
+  const svg = $('attitude-chart'), ns = 'http://www.w3.org/2000/svg'; svg.replaceChildren();
+  if (!samples.length) return;
+  const end = Date.parse(samples.at(-1).received_at), start = end - 60000;
+  const values = samples.flatMap(s => [s.telemetry.imu.roll_estimate.value, s.telemetry.imu.pitch_estimate.value]).filter(v => v !== null);
+  const range = Math.max(10, ...values.map(Math.abs));
+  for (const [key, color] of [['roll_estimate', '#cae998'], ['pitch_estimate', '#82c8dd']]) {
+    let d = '', previous = null;
+    for (const sample of samples) {
+      const time = Date.parse(sample.received_at), value = sample.telemetry.imu[key].value;
+      if (value === null || time < start) { previous = null; continue; }
+      const x = 35 + (time - start) / 60000 * 455, y = 60 - value / range * 45;
+      d += `${previous === null || time - previous > 2000 ? 'M' : 'L'}${x.toFixed(1)},${y.toFixed(1)} `; previous = time;
+    }
+    const line = document.createElementNS(ns, 'path'); line.setAttribute('d', d); line.setAttribute('fill', 'none'); line.setAttribute('stroke', color); line.setAttribute('stroke-width', '2'); svg.append(line);
+  }
+  for (const [label, x, y] of [[`${range.toFixed(0)}°`, 0, 15], ['0°', 0, 64], [`−${range.toFixed(0)}°`, 0, 110], ['−60 s', 35, 128], ['now', 460, 128]]) {
+    const text = document.createElementNS(ns, 'text'); text.setAttribute('x', x); text.setAttribute('y', y); text.textContent = label; svg.append(text);
+  }
+  $('history-caption').textContent = values.length ? 'Roll: lime / pitch: blue. Acceleration-derived estimates; fin motion can bias them.' : 'No valid attitude samples. Missing data is not plotted as zero.';
+}
+function render(s) {
+  lastState = s; renderStatus(); const t = s.telemetry; if (!t) return;
+  $('robot-identity').textContent = `${t.robot_id} · ${t.firmware_version} · #${t.seq}`;
+  $('wifi-reading').textContent = `Wi-Fi ${format(t.wifi.rssi)} · uptime ${(t.uptime_ms / 1000).toFixed(1)} s · reconnects ${t.wifi.reconnects}`;
+  $('operating-mode').textContent = t.mode.toUpperCase();
+  for (const [id, reading] of [['acceleration', t.imu.acceleration], ['gyro', t.imu.angular_velocity], ['temperature', t.water.temperature], ['tds-raw', t.water.tds_raw], ['tds-estimate', t.water.tds_estimate]]) $(id).textContent = format(reading);
+  $('attitude').textContent = `${format(t.imu.roll_estimate)} / ${format(t.imu.pitch_estimate)}`;
+  $('imu-calibration').textContent = t.imu.calibration_state;
+  $('faults').replaceChildren(...(t.faults.length ? t.faults : ['No reported device faults']).map(f => { const li = document.createElement('li'); li.textContent = f; return li; }));
+  const c = t.control;
+  $('commanded-state').textContent = `${c.flapping ? 'FLAPPING' : 'STOPPED'} · amplitude ${c.amplitude_deg}° · ${c.cycle_hz} Hz · centre ${c.centre_deg}°. Commanded left: ${format(c.left_command)}; right: ${format(c.right_command)}; syringe: ${format(c.syringe_command)}.`;
+  $('syringe-reason').textContent = `Actuator: ${c.actuator_state}${c.syringe_command.reason ? ` — ${c.syringe_command.reason}` : ''}`;
+  $('disconnect-policy').textContent = `${c.disconnect_policy === 'stop' ? `Stop flapping after ${c.heartbeat_timeout_ms / 1000} s without an active control heartbeat` : 'Autonomous policy: continue local flapping after disconnect'}. Hold last fin/syringe targets; no automatic syringe move. Software stop does not cut power. Outputs ${c.outputs_enabled ? 'enabled' : 'disabled in firmware'}.`;
+  const result = s.cv.result;
+  $('cv-result').textContent = result ? `${s.cv.stale ? 'STALE · ' : ''}${result.frame.source === 'simulator' ? 'SIMULATION · ' : ''}${result.vegetation_cover_pct.toFixed(1)}% · confidence ${result.confidence.toFixed(2)} · ${result.method} · calibration ${result.calibration_id} · frame uptime ${result.frame.captured_uptime_ms} ms` : `Unavailable: ${s.cv.reason}`;
+  if (lastUptime !== null && t.uptime_ms < lastUptime) { samples = []; lastSeq = null; }
+  if (lastSeq !== t.seq) { samples.push({ received_at: s.received_at, telemetry: t }); samples = samples.slice(-600); lastSeq = t.seq; lastUptime = t.uptime_ms; chart(); }
+  if (!recording && (s.stale || transport !== 'connected' || !t.camera.available)) {
+    $('live-camera').hidden = true; $('video-placeholder').hidden = false; $('camera-status').textContent = 'UNAVAILABLE'; $('camera-reason').textContent = s.stale ? 'Telemetry stale; camera hidden.' : t.camera.reason;
+  }
+}
+async function frame() {
+  if (recording || cameraBusy || transport !== 'connected' || lastState?.stale || !lastState?.telemetry?.camera.available || document.hidden) return;
+  cameraBusy = true;
+  try {
+    const response = await fetch('/api/camera/frame', { cache: 'no-store', signal: AbortSignal.timeout(3500) });
+    if (!response.ok) throw new Error('Camera frame unavailable; retrying');
+    const metadata = JSON.parse(response.headers.get('x-frame-metadata')), blob = await response.blob();
+    if (recording || lastState.stale) return;
+    if (frameUrl) URL.revokeObjectURL(frameUrl); frameUrl = URL.createObjectURL(blob);
+    $('live-camera').src = frameUrl; $('live-camera').hidden = false; $('video-placeholder').hidden = true;
+    $('camera-status').textContent = metadata.source === 'simulator' ? 'SIMULATED CAMERA' : 'LIVE JPEG';
+    $('video-source').textContent = `${metadata.source === 'simulator' ? 'Simulated test card' : 'ESP32 camera'} · sampled up to 2 fps`;
+    $('frame-info').textContent = `Image uptime ${metadata.captured_uptime_ms} ms · received ${new Date(metadata.received_at).toLocaleTimeString()} · calibration ${metadata.calibration_id || 'unavailable'}`;
+  } catch (error) { $('live-camera').hidden = true; $('video-placeholder').hidden = false; $('camera-reason').textContent = error.message; $('camera-status').textContent = 'CAMERA RETRYING'; }
+  finally { cameraBusy = false; }
+}
+$('live-view').addEventListener('click', () => { recording = false; video.pause(); video.hidden = true; $('video-placeholder').hidden = false; frame(); });
+client.addEventListener('state', e => render(e.detail));
+client.addEventListener('transport', e => { transport = e.detail; renderStatus(); if (transport !== 'connected' && !recording) { $('live-camera').hidden = true; $('video-placeholder').hidden = false; $('camera-reason').textContent = 'Backend unavailable'; } });
+client.addEventListener('control', renderControls);
+client.addEventListener('error', e => { $('command-feedback').textContent = e.detail; });
+client.addEventListener('command', e => logCommand(e.detail));
+client.addEventListener('sent', e => { if (!commandLines.has(e.detail.id)) logCommand(e.detail); });
+$('enable-control').addEventListener('click', async () => { try { await client.enable($('control-token').value.trim()); $('command-feedback').textContent = 'Heartbeat enabled. No movement requested.'; } catch (error) { $('command-feedback').textContent = error.message; } });
+$('disable-control').addEventListener('click', () => client.disable());
+async function command(action, args) {
+  pending = true; renderControls(); $('command-feedback').textContent = `${action}: sending; awaiting device acknowledgement…`;
+  try { const result = await client.command(action, args); logCommand(result); $('command-feedback').textContent = `${result.action}: ${result.status}${result.reason ? ` — ${result.reason}` : ' (command accepted by controller; physical motion is not measured)'}`; }
+  catch (error) { $('command-feedback').textContent = error.message; }
+  finally { pending = false; renderControls(); }
+}
+$('start-flapping').addEventListener('click', () => command('start'));
+$('stop-flapping').addEventListener('click', () => command('stop'));
+$('fin-form').addEventListener('submit', event => { event.preventDefault(); command('set_fin', { amplitude_deg: Number($('amplitude').value), cycle_hz: Number($('cycle-rate').value), centre_deg: Number($('centre').value) }); });
+$('syringe-form').addEventListener('submit', event => { event.preventDefault(); command('set_syringe', { target_deg: Number($('syringe-target').value) }); });
+document.addEventListener('visibilitychange', () => { if (document.hidden) client.disable(); });
+window.addEventListener('pagehide', () => client.stop());
+client.start(); setInterval(frame, 500);

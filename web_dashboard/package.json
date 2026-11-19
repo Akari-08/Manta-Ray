@@ -2,12 +2,15 @@
   "name": "manta-ray-dashboard",
   "version": "1.0.0",
   "private": true,
-  "description": "Local dashboard prototype for the Manta Ray survey project",
+  "description": "Local Manta Ray telemetry, camera and command service",
   "scripts": {
     "start": "node server.js",
-    "test": "node --test"
+    "test": "node --test",
+    "simulate": "node simulator.js",
+    "sample-camera": "node cv-sample.js"
   },
   "engines": {
-    "node": ">=18"
-  }
+    "node": ">=22"
+  },
+  "dependencies": { "ws": "^8.18.3" }
 }

@@ -1,16 +1,27 @@
-# Manta Ray dashboard
+# Manta Ray live dashboard
 
-A standalone Node.js dashboard prototype. Node.js 18 or newer is required; there are no packages to install.
+Local Node.js 22+ telemetry/command backend and buildless browser dashboard. Uses one
+WebSocket dependency, `ws`, pinned by `package-lock.json`. No cloud service is required.
 
-```sh
-cd web_dashboard
-npm start
+See [complete local setup and hardware instructions](../docs/live-connection.md),
+[telemetry/command protocol](../docs/telemetry-protocol.md), and
+[what was actually verified](../docs/live-validation.md).
+
+```powershell
+npm.cmd ci
+Copy-Item .env.example .env
+# Generate two different random tokens and edit .env before starting.
+node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+npm.cmd start
 ```
 
-Open <http://localhost:3000>. Set `PORT` to use another port. The server only listens on the local machine.
+For software-only testing set `ALLOW_SIMULATOR=1`, then run `npm.cmd run simulate`
+in a second terminal. Both processes read `.env`. Open `http://127.0.0.1:3000` with
+the default loopback configuration. Hardware requires binding the computer's specific
+Wi-Fi IPv4 and setting that address in the ESP32 configuration; see the guide.
 
-- Load a local video file for playback in your browser. The file is not uploaded.
-- Drag a panel by its header to reorder it, or use the arrow buttons (including on touch devices). The order is saved in browser storage when available.
-- Ecological readings, the terminal, and the configuration board are interface placeholders. No sensor data is displayed and no commands are sent or executed.
-
-Run the server checks with `npm test`.
+Run focused tests with `npm.cmd test`. Stop a manually running simulator first so
+its camera ports 8080/8081 are free for the integration fixture. Tests use isolated
+ephemeral backend ports, test-only bearer tokens and a labelled JPEG fixture; no
+physical device is commanded. `npm.cmd run sample-camera` saves one current JPEG
+and image metadata for a computer-side CV worker, without inventing CV results.
