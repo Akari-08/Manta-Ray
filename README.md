@@ -2,61 +2,54 @@
 
 **Work in progress**
 
-Manta Ray is a robotic aquatic survey vehicle designed to photograph underwater vegetation and estimate the percentage of the lakebed covered by plants. The design uses two flexible flapping fins for propulsion and a downward-facing camera for imaging. The project asks whether flapping fins can propel the vehicle efficiently while keeping survey images clear enough to measure plant cover.
+Manta Ray is a robotic aquatic survey vehicle designed to photograph underwater vegetation and estimate the percentage of the bottom covered by plants. Two flexible flapping fins provide propulsion, while a downward-facing camera records the survey. The central design question is whether the vehicle can move efficiently while capturing clear, measurable images.
 
-Vegetation mapping and water quality measurements are the near-term environmental objectives. The project also includes a chemistry research track on removing excess nutrients to limit algal growth in lakes. Multispectral imaging is a planned capability for vegetation surveys.
+Vegetation mapping and water quality monitoring are the environmental objectives. Multispectral imaging and research into removing excess nutrients to limit algal growth are planned capabilities.
 
-## System design
+## Project design
 
-| Subsystem | Design goal |
+| Subsystem | Goal |
 | --- | --- |
-| Hull and drivetrain | Waterproof enclosure with a clear camera window, paired fin drives, and a buoyancy design suited to the vehicle. The full vehicle targets forward motion, left and right turns, ascent, and descent. |
-| Autonomy | Execute survey missions offline, follow a lawnmower coverage route, log survey data, and respond to a stop-and-surface command. |
-| Dashboard | Provide a command center for mission planning and commands, live position and vehicle status when connected, and review of vegetation analysis and COLMAP reconstructions. |
+| Hull and drivetrain | Waterproof camera enclosure, synchronized fin drives, buoyancy control, forward movement, steering, ascent and descent. |
+| Autonomy | Run offline survey missions, follow a lawnmower coverage route, log observations, and respond to stop-and-surface commands. |
+| Survey analysis | Measure vegetation cover, retain water quality observations, and reconstruct surveyed features with COLMAP. |
+| Dashboard | Provide mission controls, vehicle status, recorded observations, selectable ecological assessment methods, and reconstruction viewing. |
 
-Each subsystem can be tested independently. The preliminary hardware list includes DS3218MG servos, an ESP32 and camera assembly (15 g), a temperature sensor (8 g), a total dissolved solids (TDS) sensor (50 g), and a battery to be selected. The drivetrain design will evaluate fin geometry, synchronized motion, buoyancy, and steering.
+The first physical prototype will float across a shallow tank and survey artificial vegetation patches with known coverage. This allows image analysis and propulsion to be evaluated before adding depth control. The preliminary hardware includes DS3218MG fin servos, an ESP32/camera, temperature and TDS sensors, and a battery to be selected. The subsystems can be tested independently.
 
-## Prototype and validation
+Validation will cover movement and steering, image clarity during fin motion, sensor readings against references, sound measurements in air and water, and comparison of estimated plant cover with independently measured cover.
 
-The first physical prototype will float at the surface and use its fins to cross a shallow tank while its camera looks underwater. The tank demo will survey artificial vegetation patches and compare the estimated percentage of plant cover with known coverage. The surface-floating design defers depth control to a later prototype.
+## Run locally
 
-- Test fin propulsion and steering in the tank, then test ascent and descent on a depth-capable prototype.
-- Check camera image clarity during fin motion and validate the recording-to-analysis pipeline off the vehicle using saved footage.
-- Measure operating sound levels in decibels in air and underwater, documenting the measurement setup for each medium.
-- Test the water quality sensors against reference readings.
-- Exercise autonomous route following, position reporting, and the dashboard's stop-and-surface command in software-in-the-loop (SITL).
-
-## Roadmap
-
-- Research the environmental problem, define survey objectives and water quality measurements, and identify a field specialist to consult.
-- Compare fin drive mechanisms and plan the hull, drivetrain, buoyancy, camera, and sensor integration.
-- Define the full system architecture and the interfaces between firmware, autonomy, survey analysis, and the dashboard.
-- Validate the software in SITL, then build and test the surface-floating tank prototype.
-
-## Local setup (PowerShell)
-
-From the repository root, use an installed Python 3.11 or newer with uv:
+Requires installed Python 3.11+, uv, and Node.js 22+. FFmpeg/FFprobe are needed for video analysis; COLMAP is needed for reconstruction. The commands below use existing local tools and dependencies.
 
 ```powershell
+# From the repository root
 uv sync --locked --offline --no-python-downloads
-uv run --locked --offline --no-python-downloads python -c "import manta_ray.ecology, manta_ray.reconstruction, manta_ray.connectivity"
+cd web_dashboard
+npm.cmd run demo
 ```
 
-Without uv, use the installed Python directly:
+Open [the dashboard](http://127.0.0.1:3000). The launcher starts the local backend, device simulator, test-card camera, and Python surfacing simulation. It creates local credentials if needed and supplies demo authorization automatically. Choose **Enable controls** before commanding simulated motion. Fresh-checkout dependency setup is in the guide.
 
-```powershell
-python -m venv .venv
-.\.venv\Scripts\python.exe -c "import manta_ray.ecology, manta_ray.reconstruction, manta_ray.connectivity"
+## Documentation
+
+- [GUIDE.md](GUIDE.md): setup, video processing, assessment inputs, APIs, firmware, and verification commands.
+- [research.md](research.md): scientific methods, scholarly and official sources, validation results, and research limitations.
+
+The implementation currently supports recorded-video green-cover screening, traceable TDS observations and simulated profiles, Carlson TSI and CCME WQI calculations from supplied measurements, sparse COLMAP reconstruction, and local telemetry/control integration. Candidate green cover is calculated from video pixels; its accuracy as vegetation cover still needs independent validation. The stock clips have unknown ecological condition, so their imagery and simulated chemistry cannot establish actual lake health.
+
+## Repository layout
+
+```text
+manta_ray/       Python ecology, reconstruction, connectivity and verification
+web_dashboard/  Local Node backend, browser dashboard and device simulator
+firmware/       ESP32-WROVER firmware and hardware configuration examples
+tests/          Python tests; dashboard tests live beside the Node modules
+docs/           Machine-readable telemetry example
+media/          Local source recordings (ignored)
+data/input/     Additional local inputs (ignored)
+outputs/        Generated reports, masks, models and logs (ignored)
 ```
 
-See the [survey software guide](docs/software.md) for video analysis, reconstruction, and command testing.
-
-The [live ESP32 connection guide](docs/live-connection.md) covers the local Node backend,
-dashboard, labelled ESP32 simulator, camera/CV interface and Freenove WROVER firmware.
-Start there for hardware telemetry and fin controls; the older Python depth/surfacing demo
-is a separate simulation. See the [wire protocol](docs/telemetry-protocol.md) and
-[actual integration validation](docs/live-validation.md) for scope and test evidence.
-
-The [scientific method](docs/scientific-method.md) defines the camera and TDS indicators and their validation.
-
-See the [validation evidence](docs/validation-report.md) for software tests, stock-media processing, and real COLMAP reconstruction results.
+Next milestones are independent vegetation labels, calibrated sensor integration, a representative field sampling plan, offline route following, and tank validation of the vehicle. Multispectral retrieval and nutrient removal require separate research and experimental validation.

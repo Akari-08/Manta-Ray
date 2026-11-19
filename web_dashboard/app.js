@@ -1,3 +1,4 @@
+import { initSurveyPanel } from './survey-panel.js';
 import { LiveClient } from './live-client.js';
 import { parseCommandLine, buildCommand, finSettingsConfirmed } from './commands.mjs';
 import { createFishView } from './fish-view.mjs';
@@ -127,6 +128,30 @@ const $ = id => document.getElementById(id);
 const fishView = createFishView($('fish-stage'), $('model-badge'), $('model-readout'));
 createLocationMap();
 let recording = false, transport = 'connecting', lastState = null, samples = [], lastSeq = null, lastUptime = null, cameraBusy = false, frameUrl = null, pending = false, finSync = null, localLogId = 0;
+let demoAccessAttempted = false;
+
+async function authorizeLocalDemo(state) {
+  if (demoAccessAttempted || state.stale || state.telemetry?.source !== 'simulator') return;
+  demoAccessAttempted = true;
+  try {
+    const response = await fetch('/api/demo/access', { cache: 'no-store', signal: AbortSignal.timeout(4000) });
+    if (!response.ok) return;
+    const access = await response.json();
+    if (access.simulation !== true || typeof access.control_token !== 'string' || access.control_token.length < 24 ||
+        lastState?.stale || lastState?.telemetry?.source !== 'simulator') return;
+    client.token = access.control_token;
+    $('control-token').value = '';
+    $('control-token').disabled = true;
+    $('control-token').placeholder = 'Automatic local demo';
+    const hint = document.querySelector('.interface-sidebar p');
+    if (hint) hint.textContent = 'Local demo authorization is automatic. Enable controls before commanding motion and keep this tab visible.';
+    $('survey-source-note').textContent = 'Stock recordings have unknown water conditions. Optional TDS values are labeled simulated. Local demo processing is authorized automatically.';
+    $('command-feedback').textContent = 'Local demo authorized. Enable controls to activate the motion heartbeat.';
+    renderControls();
+  } catch {
+    // Manual authorization remains available when the local demo endpoint is unavailable.
+  }
+}
 const format = r => r?.value === null || !r ? `Unavailable: ${r?.reason || 'no telemetry'}` : `${Array.isArray(r.value) ? r.value.map(v => v.toFixed(2)).join(' / ') : r.value.toFixed(2)} ${r.unit}`;
 const commandLines = new Map();
 function logCommand(c) {
@@ -189,6 +214,7 @@ function chart() {
 }
 function render(s) {
   lastState = s; checkFinSync(s); renderStatus(); const t = s.telemetry; if (!t) return;
+  authorizeLocalDemo(s);
   $('robot-identity').textContent = `${t.robot_id} · ${t.firmware_version} · #${t.seq}`;
   $('wifi-reading').textContent = `Wi-Fi ${format(t.wifi.rssi)} · uptime ${(t.uptime_ms / 1000).toFixed(1)} s · reconnects ${t.wifi.reconnects}`;
   $('operating-mode').textContent = t.mode.toUpperCase();
@@ -231,7 +257,7 @@ client.addEventListener('control', renderControls);
 client.addEventListener('error', e => { $('command-feedback').textContent = e.detail; });
 client.addEventListener('command', e => logCommand(e.detail));
 client.addEventListener('sent', e => { const current = commandLines.get(e.detail.id); if (!current || current.status === 'sending') logCommand(e.detail); });
-$('enable-control').addEventListener('click', async () => { try { await client.enable($('control-token').value.trim()); $('command-feedback').textContent = 'Heartbeat enabled. No movement requested.'; } catch (error) { $('command-feedback').textContent = error.message; } });
+$('enable-control').addEventListener('click', async () => { try { await client.enable($('control-token').value.trim() || client.token); $('command-feedback').textContent = 'Heartbeat enabled. No movement requested.'; } catch (error) { $('command-feedback').textContent = error.message; } });
 $('disable-control').addEventListener('click', () => client.disable());
 async function command(action, args = {}, label = action) {
   if (pending) { logCommand({ id: `local-${++localLogId}`, action, label, status: 'not sent', reason: 'Wait for the pending command' }); return; }
@@ -270,3 +296,10 @@ $('command-line-form').addEventListener('submit', event => {
 document.addEventListener('visibilitychange', () => { if (document.hidden) client.disable(); });
 window.addEventListener('pagehide', () => client.stop());
 client.start(); setInterval(frame, 500);
+initSurveyPanel({
+  token: () => client.token || $('control-token').value.trim(),
+  onStop: () => {
+    client.token = $('control-token').value.trim() || client.token;
+    return client.command('stop');
+  },
+});

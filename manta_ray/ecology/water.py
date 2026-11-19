@@ -8,6 +8,8 @@ import math
 from pathlib import Path
 from statistics import median
 
+from .simulation import simulated_tds_value, simulation_metadata
+
 
 def finite_number(value, name, minimum=0):
     try:
@@ -31,9 +33,11 @@ class TDSReading:
 
 
 class WaterData:
-    def __init__(self, csv_path=None, simulated=None, site_id="", baseline_path=None):
+    def __init__(self, csv_path=None, simulated=None, site_id="", baseline_path=None,
+                 *, simulated_variation_ppm=10, simulated_seed=42):
         self.readings = []
         self.simulated = simulated
+        self.simulated_profile = simulation_metadata(simulated, simulated_variation_ppm, simulated_seed) if simulated is not None else None
         self.baseline = None
         if csv_path is not None:
             with Path(csv_path).open(encoding="utf-8-sig", newline="") as stream:
@@ -81,7 +85,9 @@ class WaterData:
 
     def match(self, timestamp, tolerance):
         if self.simulated is not None:
-            return TDSReading(timestamp, self.simulated, "simulated", "", "", "constant_demo", None)
+            profile = self.simulated_profile
+            value = simulated_tds_value(timestamp, profile["baseline_ppm"], profile["variation_ppm"], profile["seed"])
+            return TDSReading(timestamp, value, "simulated", "", "", profile["name"], None)
         index = bisect_left(self.times, timestamp)
         candidates = self.readings[max(0, index - 1):index + 1]
         if not candidates:
@@ -114,6 +120,8 @@ class WaterData:
             result[source] = {"count": len(values), "median_ppm": median(values) if values else None,
                               "min_ppm": min(values) if values else None,
                               "max_ppm": max(values) if values else None}
-        result["constant_simulated_ppm"] = self.simulated
+        result["constant_simulated_ppm"] = (self.simulated if self.simulated_profile and
+                                             self.simulated_profile["variation_ppm"] == 0 else None)
+        result["simulated_profile"] = self.simulated_profile
         result["reference"] = self.baseline
         return result

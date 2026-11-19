@@ -6,6 +6,8 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from manta_ray.ecology.simulation import simulated_tds_value
+
 
 @unittest.skipUnless(shutil.which("ffmpeg"), "FFmpeg is required for video integration tests")
 class EcologyTests(unittest.TestCase):
@@ -40,7 +42,11 @@ class EcologyTests(unittest.TestCase):
             self.assertEqual(rows[1]["candidate_green_cover_pct"], "")
             self.assertEqual(rows[1]["overlay"], "")
             self.assertEqual(float(rows[2]["candidate_green_cover_pct"]), 0)
-            self.assertEqual({row["simulated_tds_ppm"] for row in rows}, {"123.0"})
+            simulated_values = [float(row["simulated_tds_ppm"]) for row in rows]
+            self.assertEqual(simulated_values, [simulated_tds_value(index, baseline_ppm=123) for index in range(3)])
+            self.assertEqual(len(set(simulated_values)), 3)
+            self.assertTrue(all(113 <= value <= 133 for value in simulated_values))
+            self.assertTrue(all(row["tds_source"] == "simulated" for row in rows))
             for index in (0, 2):
                 self.assertTrue((output / rows[index]["overlay"]).read_bytes().startswith(
                     b"\x89PNG\r\n\x1a\n"

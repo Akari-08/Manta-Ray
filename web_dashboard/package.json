@@ -5,6 +5,7 @@
   "description": "Local Manta Ray telemetry, camera and command service",
   "scripts": {
     "start": "node server.js",
+    "demo": "node demo.js",
     "test": "node --test",
     "simulate": "node simulator.js",
     "sample-camera": "node cv-sample.js"

@@ -6,7 +6,19 @@ const { randomUUID, timingSafeEqual } = require('node:crypto');
 const { isIP } = require('node:net');
 const { WebSocketServer, WebSocket } = require('ws');
 const { VERSION, LIMITS, validateTelemetry, validateCommand, validateAck } = require('./protocol');
+const { createSurveyService } = require('./survey-service');
+const { createSitlService } = require('./sitl-service');
+const { createAssessmentService } = require('./assessment-service');
 const files = { '/': ['index.html', 'text/html'], '/styles.css': ['styles.css', 'text/css'], '/app.js': ['app.js', 'text/javascript'], '/live-client.js': ['live-client.js', 'text/javascript'], '/commands.mjs': ['commands.mjs', 'text/javascript'], '/motion-model.mjs': ['motion-model.mjs', 'text/javascript'], '/fish-view.mjs': ['fish-view.mjs', 'text/javascript'], '/location-map.mjs': ['location-map.mjs', 'text/javascript'], '/vendor/three.module.js': ['node_modules/three/build/three.module.js', 'text/javascript'], '/vendor/three.core.js': ['node_modules/three/build/three.core.js', 'text/javascript'], '/vendor/maplibre-gl.mjs': ['node_modules/maplibre-gl/dist/maplibre-gl.mjs', 'text/javascript'], '/vendor/maplibre-gl-worker.mjs': ['node_modules/maplibre-gl/dist/maplibre-gl-worker.mjs', 'text/javascript'], '/vendor/maplibre-gl.css': ['node_modules/maplibre-gl/dist/maplibre-gl.css', 'text/css'] };
+Object.assign(files, {
+  '/survey-panel.js': ['survey-panel.js', 'text/javascript'],
+  '/assessment-panel.js': ['assessment-panel.js', 'text/javascript'],
+  '/survey-observations.mjs': ['survey-observations.mjs', 'text/javascript'],
+  '/point-cloud-view.mjs': ['point-cloud-view.mjs', 'text/javascript'],
+  '/survey-panel.css': ['survey-panel.css', 'text/css'],
+  '/vendor/PLYLoader.js': ['node_modules/three/examples/jsm/loaders/PLYLoader.js', 'text/javascript'],
+  '/vendor/OrbitControls.js': ['node_modules/three/examples/jsm/controls/OrbitControls.js', 'text/javascript'],
+});
 const equal = (a, b) => typeof a === 'string' && typeof b === 'string' && a.length > 0 && Buffer.byteLength(a) === Buffer.byteLength(b) && timingSafeEqual(Buffer.from(a), Buffer.from(b));
 const normalizeIP = ip => ip?.replace(/^::ffff:/, '');
 function localIP(ip) {
@@ -22,8 +34,11 @@ function cameraURLs(t, peer) {
   }
 }
 function createServer(options = {}) {
-  const cfg = { deviceToken: process.env.DEVICE_TOKEN, controlToken: process.env.CONTROL_TOKEN, robotId: process.env.ROBOT_ID || 'manta-01', allowSimulator: process.env.ALLOW_SIMULATOR === '1', staleMs: 2000, deadMs: 5000, heartbeatMs: 500, leaseMs: 2000, historySize: 600, now: Date.now, ...options };
+  const cfg = { deviceToken: process.env.DEVICE_TOKEN, controlToken: process.env.CONTROL_TOKEN, robotId: process.env.ROBOT_ID || 'manta-01', allowSimulator: process.env.ALLOW_SIMULATOR === '1', demoAccess: false, staleMs: 2000, deadMs: 5000, heartbeatMs: 500, leaseMs: 2000, historySize: 600, now: Date.now, ...options };
   if (!cfg.deviceToken || cfg.deviceToken.length < 24 || !cfg.controlToken || cfg.controlToken.length < 24 || equal(cfg.deviceToken, cfg.controlToken) || cfg.deviceToken.startsWith('replace-') || cfg.controlToken.startsWith('replace-')) throw new Error('Set distinct random DEVICE_TOKEN and CONTROL_TOKEN (at least 24 characters each; replace example values)');
+  const survey = createSurveyService({ root: cfg.surveyRoot || path.resolve(__dirname, '..'), python: cfg.python, colmap: cfg.colmap });
+  const assessments = createAssessmentService({ root: cfg.surveyRoot || path.resolve(__dirname, '..'), python: cfg.python, loadSurvey: id => survey.ecologyDetail(id) });
+  const sitl = createSitlService({ baseUrl: cfg.sitlUrl, enabled: cfg.sitlEnabled ?? process.env.ENABLE_SITL === '1', allowSimulator: cfg.allowSimulator });
   let device = null, latest = null, receivedAt = null, controlUntil = 0, shuttingDown = false;
   let history = [], commandLog = new Map(), captureRequests = 0;
   const viewers = new Set(), sockets = new Set(), frames = new Map();
@@ -79,8 +94,30 @@ function createServer(options = {}) {
       if (!localIP(req.socket.remoteAddress)) return json(res, 403, { error: 'Private LAN only' });
       const u = new URL(req.url, 'http://localhost');
       if (req.headers.origin && req.headers.origin !== `http://${req.headers.host}`) return json(res, 403, { error: 'Cross-origin requests disabled' });
+      if (u.pathname === '/api/demo/access') {
+        if (!cfg.demoAccess || !cfg.allowSimulator) return json(res, 404, { error: 'Local demo authorization disabled' });
+        const peer = normalizeIP(req.socket.remoteAddress);
+        const port = server.address()?.port;
+        const hosts = [`127.0.0.1:${port}`, `localhost:${port}`];
+        if (port === 80) hosts.push('127.0.0.1', 'localhost');
+        if (!(peer === '::1' || /^127\./.test(peer || '')) || !hosts.includes(req.headers.host) ||
+            (req.headers['sec-fetch-site'] && !['same-origin', 'none'].includes(req.headers['sec-fetch-site']))) {
+          return json(res, 403, { error: 'Same-origin localhost demo access required' });
+        }
+        if (req.method !== 'GET') return json(res, 405, { error: 'GET required' });
+        const current = state();
+        if (current.stale || current.telemetry?.source !== 'simulator') return json(res, 409, { error: 'Fresh simulator telemetry required' });
+        return json(res, 200, { control_token: cfg.controlToken, simulation: true });
+      }
+      if (await assessments.handle(req, res, u, { authorized: authorized(req) })) return;
+      if (await survey.handle(req, res, u, { authorized: authorized(req) })) return;
+      if (await sitl.handle(req, res, u, { authorized: authorized(req), state })) return;
       if (req.method === 'GET' && Object.hasOwn(files, u.pathname)) {
-        const [file, type] = files[u.pathname], content = await readFile(path.join(__dirname, file));
+        const [file, type] = files[u.pathname];
+        let content = await readFile(path.join(__dirname, file));
+        if (file.startsWith('node_modules/three/examples/jsm/')) {
+          content = Buffer.from(content.toString('utf8').replaceAll("from 'three'", "from '/vendor/three.module.js'"));
+        }
         res.writeHead(200, { 'Content-Type': `${type}; charset=utf-8`, 'Content-Security-Policy': "default-src 'self'; script-src 'self'; worker-src 'self'; style-src 'self'; img-src 'self' http: blob: data:; media-src 'self' blob:; connect-src 'self' https://tiles.openfreemap.org; frame-ancestors 'none'; base-uri 'none'", 'Cache-Control': 'no-cache' }); res.end(content); return;
       }
       if (req.method === 'GET' && u.pathname === '/api/state') return json(res, 200, state());
@@ -145,7 +182,7 @@ function createServer(options = {}) {
           if (cfg.now() - rateStart >= 1000) { rateStart = cfg.now(); count = 0; } if (++count > 40) throw new Error('Message rate exceeded');
           const msg = JSON.parse(raw.toString());
           if (!authenticated) {
-            if (msg.type !== 'hello' || msg.schema_version !== VERSION || msg.robot_id !== cfg.robotId || !equal(msg.token, cfg.deviceToken) || !['hardware', 'simulator'].includes(msg.source) || (msg.source === 'simulator' && !cfg.allowSimulator)) throw new Error('Device authentication or source rejected');
+            if (msg.type !== 'hello' || msg.schema_version !== VERSION || msg.robot_id !== cfg.robotId || !equal(msg.token, cfg.deviceToken) || !['hardware', 'simulator'].includes(msg.source) || (msg.source === 'simulator' && !cfg.allowSimulator) || (cfg.demoAccess && msg.source !== 'simulator')) throw new Error('Device authentication or source rejected');
             if (device) throw new Error('Robot already connected');
             authenticated = true; clearTimeout(authTimeout); latest = null; receivedAt = null; history = []; frames.clear(); cv = { available: false, reason: 'No live CV worker result for this session', result: null };
             device = { ws, sessionId: randomUUID(), source: msg.source, lastSeen: cfg.now() }; controlUntil = 0;
@@ -175,6 +212,8 @@ function createServer(options = {}) {
   heartbeat.unref();
   server.shutdown = async () => {
     if (shuttingDown) return; shuttingDown = true; clearInterval(heartbeat); for (const r of commandLog.values()) clearTimeout(r.timer);
+    await assessments.close();
+    await survey.close();
     for (const ws of wss.clients) ws.terminate(); wss.close(); for (const socket of sockets) socket.destroy(); await new Promise(resolve => server.close(resolve));
   };
   return server;

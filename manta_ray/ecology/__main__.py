@@ -16,6 +16,7 @@ import time
 
 from .metrics import FRAME_BYTES, WIDTH, analyze, numeric_fields, write_mask, write_overlay
 from .water import WaterData, finite_number
+from .assessment import assess, catalog
 
 FIELDS = (
     "timestamp_s", "status", "candidate_green_cover_pct", "vegetation_cover_pct",
@@ -55,11 +56,25 @@ def run(args):
         raise ValueError(f"Input video does not exist: {source}")
     if destination.exists():
         raise ValueError(f"Output already exists; choose a new directory: {destination}")
+    assessment_request = {}
+    if args.assessment_input:
+        assessment_request = json.loads(args.assessment_input.read_text(encoding="utf-8-sig"))
+        if not isinstance(assessment_request, dict):
+            raise ValueError("Assessment input must be a JSON object")
+    assessment_request.setdefault("method", args.assessment_method or "camera_tds")
+    if args.assessment_method:
+        assessment_request["method"] = args.assessment_method
+    if args.include_simulated_assessment:
+        assessment_request["include_simulated"] = True
+    if assessment_request["method"] not in {method["id"] for method in catalog()}:
+        raise ValueError("Unknown assessment method")
     ffmpeg = shutil.which(args.ffmpeg)
     ffprobe = shutil.which(args.ffprobe)
     if not ffmpeg or not ffprobe:
         raise ValueError("FFmpeg and FFprobe are required; use --ffmpeg and --ffprobe for installed paths.")
-    water = WaterData(args.tds_csv, args.tds_ppm, args.site_id, args.tds_reference)
+    water = WaterData(args.tds_csv, args.tds_ppm, args.site_id, args.tds_reference,
+                      simulated_variation_ppm=args.simulated_tds_variation,
+                      simulated_seed=args.simulated_tds_seed)
     probe = subprocess.run([
         ffprobe, "-v", "error", "-select_streams", "v:0",
         "-show_entries", "stream=codec_name,width,height,avg_frame_rate,duration,color_space,color_transfer,color_primaries:format=duration",
@@ -176,7 +191,7 @@ def run(args):
         if count == 0:
             raise ValueError("No video frames were sampled.")
         summary = {
-            "schema_version": 2, "created_utc": datetime.now(timezone.utc).isoformat(),
+            "schema_version": 3, "created_utc": datetime.now(timezone.utc).isoformat(),
             "source": {"name": source.name, "sha256": source_hash, "type": args.video_source,
                        "site_id": args.site_id or None, "metadata": metadata},
             "method": {
@@ -203,6 +218,11 @@ def run(args):
                       "reference_comparison": "user-supplied site range screening; ecological significance unverified",
                       "calibration": "metadata recorded as supplied; calibration accuracy unverified",
                       "units": "input ppm retained; approximately mg/L only for dilute freshwater"},
+            "aquatic_life": {
+                "status": "not_assessed", "detections": None, "unique_individuals": None,
+                "identified_taxa": None,
+                "reason": "Organism detection, tracking and species identification are not implemented or validated.",
+            },
             "assessment": {
                 "lake_health": "insufficient_evidence",
                 "trophic_state": "not_assessed",
@@ -221,6 +241,13 @@ def run(args):
         for name, path in (("tds_csv", args.tds_csv), ("tds_reference", args.tds_reference)):
             if path:
                 summary["source"][name] = {"name": path.name, "sha256": file_hash(path)}
+        with (result / "survey.csv").open(encoding="utf-8", newline="") as stream:
+            observations = list(csv.DictReader(stream))
+        ecological_assessment = assess(assessment_request, summary, observations)
+        summary["ecological_assessment"] = ecological_assessment
+        (result / "assessment.json").write_text(
+            json.dumps(ecological_assessment, indent=2, allow_nan=False) + "\n", encoding="utf-8"
+        )
         (result / "summary.json").write_text(json.dumps(summary, indent=2, allow_nan=False) + "\n", encoding="utf-8")
         (result / "report.md").write_text(
             f"# Survey observations\n\nSource: {source.name}\n\n"
@@ -232,6 +259,13 @@ def run(args):
             "See summary.json for the method, provenance, missing indicators and interpretation.\n",
             encoding="utf-8",
         )
+        with (result / "report.md").open("a", encoding="utf-8") as stream:
+            stream.write(
+                f"\n## Selected assessment\n\n{ecological_assessment['method_name']}\n\n"
+                f"Status: {ecological_assessment['status']}\n\n"
+                f"Result: {ecological_assessment['result']['label']}\n\n"
+                "The complete calculation, inputs, limitations and sources are retained in assessment.json.\n"
+            )
         result.rename(destination)
     print(f"Analyzed {count} views ({len(covers)} usable). Results: {destination / 'summary.json'}")
 
@@ -249,9 +283,16 @@ def main(argv=None):
     parser.add_argument("--confirm-bottom-roi", action="store_true", help="Record operator confirmation that ROI shows lakebed")
     parser.add_argument("--video-source", choices=("unknown", "stock", "survey", "synthetic"), default="unknown")
     parser.add_argument("--site-id", default="")
+    parser.add_argument("--assessment-method", choices=("camera_tds", "carlson_tsi", "ccme_wqi"))
+    parser.add_argument("--assessment-input", type=Path, help="JSON measurements and assessment settings")
+    parser.add_argument("--include-simulated-assessment", action="store_true", help="Enable explicitly labeled scenario calculations")
     tds = parser.add_mutually_exclusive_group()
     tds.add_argument("--simulated-tds-ppm", "--tds-ppm", dest="tds_ppm", type=float)
     tds.add_argument("--tds-csv", type=Path)
+    parser.add_argument("--simulated-tds-variation", type=float, default=10,
+                        help="Maximum departure from the simulated TDS baseline in ppm")
+    parser.add_argument("--simulated-tds-seed", type=int, default=42,
+                        help="Seed identifying the repeatable simulated TDS time profile")
     parser.add_argument("--tds-reference", type=Path)
     parser.add_argument("--tds-tolerance", type=float, default=0.5)
     parser.add_argument("--min-brightness", type=int, default=24)
@@ -269,6 +310,9 @@ def main(argv=None):
             finite_number(args.duration, "--duration", 0.001)
         if args.tds_ppm is not None:
             finite_number(args.tds_ppm, "--simulated-tds-ppm")
+        finite_number(args.simulated_tds_variation, "--simulated-tds-variation")
+        if not 0 <= args.simulated_tds_seed <= 4294967295:
+            raise ValueError("--simulated-tds-seed must be between 0 and 4294967295")
         if args.overlay_every < 1 or args.max_samples < 1:
             raise ValueError("--overlay-every and --max-samples must be positive")
         if not 0 <= args.min_saturation <= 1 or not 1 <= args.green_excess <= 255:

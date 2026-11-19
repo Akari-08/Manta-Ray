@@ -6,6 +6,7 @@
   <meta name="theme-color" content="#081412">
   <title>Manta Ray | Survey Dashboard</title>
   <link rel="stylesheet" href="/styles.css">
+  <link rel="stylesheet" href="/survey-panel.css">
   <link rel="stylesheet" href="/vendor/maplibre-gl.css">
   <script src="/app.js" type="module"></script>
 </head>
@@ -101,6 +102,95 @@
               <p class="terminal-help" id="terminal-help">Commands: <code>setfin &lt;amplitude|cr|center&gt; &lt;value&gt;</code> · <code>setsyringe &lt;degrees&gt;</code> · <code>startflap</code> · <code>stopflap</code>. Enable controls and keep this tab visible. Software stop does not cut power.</p>
               <div class="terminal-output" id="terminal-output" aria-live="polite"><p>No commands sent this session.</p></div>
               <form id="command-line-form" class="terminal-input"><label for="command-line">&gt;</label><input id="command-line" type="text" maxlength="200" autocomplete="off" spellcheck="false" aria-label="Vehicle command" aria-describedby="terminal-help" placeholder="e.g. setfin amplitude 20"><button type="submit">SEND &#8594;</button></form>
+            </div>
+          </div>
+        </div>
+      </section>
+      <section class="panel recorded-panel" data-panel="recorded" aria-labelledby="recorded-title">
+        <div class="panel-header" draggable="true">
+          <div class="panel-heading"><span class="panel-index">06</span><div><h2 id="recorded-title">Recorded surveys</h2><p>IMAGE ANALYSIS <span class="tiny-separator">/</span> RECONSTRUCTION</p></div></div>
+          <div class="panel-actions"><button class="move-panel" data-direction="-1" aria-label="Move recorded surveys earlier">&#8592;</button><button class="move-panel" data-direction="1" aria-label="Move recorded surveys later">&#8594;</button><span class="drag-handle" aria-hidden="true">&#8942;&#8942;</span></div>
+        </div>
+        <div class="survey-panel-content">
+          <form id="survey-run-form" class="survey-run-form">
+            <label for="survey-clip">Source recording<select id="survey-clip" required disabled><option value="">Loading recordings…</option></select></label>
+            <label for="survey-mode">Processing<select id="survey-mode"><option value="ecology">Image analysis</option><option value="reconstruction">3D reconstruction</option><option value="both">Image analysis + 3D</option></select></label>
+            <label for="survey-demo-tds">Simulated TDS baseline · ppm<input id="survey-demo-tds" type="number" min="0" step="any" placeholder="Optional" aria-describedby="survey-source-note"></label>
+            <button id="survey-run" type="submit" disabled>PROCESS RECORDING</button>
+            <button id="survey-refresh" type="button">REFRESH RESULTS</button>
+          </form>
+          <p class="survey-note" id="survey-source-note">Stock recordings have unknown water conditions. Optional TDS values are labeled simulated. Processing uses your control token.</p>
+          <p class="survey-feedback" id="survey-feedback" role="status" aria-live="polite">Loading saved surveys.</p>
+          <div class="survey-results-grid">
+            <div class="survey-result-section">
+              <div class="survey-section-heading"><h3>Image measurements</h3><label for="survey-ecology-result" class="sr-only">Saved image analysis</label><select id="survey-ecology-result" disabled><option value="">No saved image analysis</option></select></div>
+              <div class="survey-empty" id="survey-ecology-empty">Process a recording or choose a saved analysis.</div>
+              <div id="survey-ecology-detail" hidden>
+                <p class="survey-result-source" id="survey-ecology-source"></p>
+                <dl class="survey-metrics">
+                  <div><dt>Candidate green cover</dt><dd id="survey-green-cover">Unavailable</dd></div>
+                  <div><dt>Usable views</dt><dd id="survey-usable">Unavailable</dd></div>
+                  <div><dt>TDS source</dt><dd id="survey-tds-source">Unavailable</dd></div>
+                  <div><dt>Assessment status</dt><dd id="assessment-status">Choose a method</dd></div>
+                </dl>
+                <p class="survey-note">Candidate green cover describes image pixels. Vegetation identification needs reference labels. View quality measures recording conditions.</p>
+                <p id="survey-life-status" class="survey-note">Aquatic life: not assessed. An organism detector and tracker are required.</p>
+                <section class="assessment-panel" aria-labelledby="assessment-title">
+                  <h4 id="assessment-title">Ecological assessment</h4>
+                  <label class="assessment-label" for="assessment-method">Calculation method</label>
+                  <select id="assessment-method" disabled><option value="">Loading methods…</option></select>
+                  <p id="assessment-description" class="survey-note"></p>
+                  <p id="assessment-required" class="survey-note"></p>
+                  <div id="assessment-sources" class="survey-downloads"></div>
+                  <form id="assessment-form">
+                    <label class="assessment-check"><input id="assessment-include-simulated" type="checkbox"> Include simulated inputs in a labeled scenario</label>
+                    <div id="assessment-tds-controls">
+                      <label class="assessment-check"><input id="assessment-simulate-tds" type="checkbox"> Generate deterministic simulated TDS</label>
+                      <p class="survey-note">Generated TDS is a repeatable demonstration scenario independent of the recording content.</p>
+                      <div id="assessment-tds-options" class="assessment-tds-options" hidden>
+                        <label>Seed<input id="assessment-seed" type="number" value="42" min="0" max="4294967295" step="1"></label>
+                        <label>Baseline · ppm<input id="assessment-baseline" type="number" value="150" min="0" step="any"></label>
+                        <label>Variation · ppm<input id="assessment-variation" type="number" value="10" min="0" step="any"></label>
+                      </div>
+                    </div>
+                    <details class="assessment-research-inputs">
+                      <summary>Measurements and reference objectives</summary>
+                      <p class="survey-note">Provide measurements with parameter, value, unit, source, method, sample_id and sampled_at. Objectives require parameter, unit, direction, value and reference.</p>
+                      <button id="assessment-example" type="button">LOAD SIMULATED EXAMPLE</button>
+                      <label class="assessment-label" for="assessment-inputs">Research inputs · JSON</label>
+                      <textarea id="assessment-inputs" rows="9" spellcheck="false">{"measurements":[],"objectives":[]}</textarea>
+                    </details>
+                    <button id="assessment-calculate" type="submit" disabled>CALCULATE ASSESSMENT</button>
+                  </form>
+                  <p id="assessment-feedback" class="survey-note" role="status" aria-live="polite">Select a saved image analysis.</p>
+                  <div id="assessment-report" hidden>
+                    <p id="assessment-origin" class="assessment-origin"></p>
+                    <p id="assessment-result" class="assessment-result"></p>
+                    <dl id="assessment-values" class="assessment-values"></dl>
+                    <div id="assessment-downloads" class="survey-downloads"></div>
+                    <details><summary>Calculation trace and evidence</summary><div id="assessment-evidence"></div></details>
+                  </div>
+                </section>
+                <div class="survey-chart"><span class="overline">CANDIDATE GREEN COVER · % OF SELECTED VIEW</span><svg id="survey-cover-chart" viewBox="0 0 600 155" role="img" aria-label="Candidate green cover over recording time"></svg></div>
+                <div class="survey-chart"><span class="overline">TDS OBSERVATIONS · PPM</span><svg id="survey-tds-chart" viewBox="0 0 600 155" role="img" aria-label="TDS over recording time, colored by measured or simulated source"></svg><p class="survey-chart-key"><span class="key-measured">Measured</span><span class="key-simulated">Simulated</span><span>Gaps indicate missing observations</span></p></div>
+                <div class="survey-table-wrap"><table class="survey-table"><caption>Latest sampled views</caption><thead><tr><th scope="col">Time · s</th><th scope="col">Quality</th><th scope="col">Green · %</th><th scope="col">TDS · ppm</th><th scope="col">Source</th></tr></thead><tbody id="survey-observation-rows"></tbody></table></div>
+                <div class="survey-downloads" id="survey-downloads"></div>
+                <details class="survey-overlay-links"><summary>Saved overlay files</summary><div id="survey-overlay-downloads" class="survey-downloads"></div></details>
+              </div>
+            </div>
+            <div class="survey-result-section">
+              <div class="survey-section-heading"><h3>3D reconstruction</h3><label for="survey-reconstruction-result" class="sr-only">Saved reconstruction</label><select id="survey-reconstruction-result" disabled><option value="">No saved reconstructions</option></select></div>
+              <p id="survey-reconstruction-summary" class="survey-note">Choose a saved reconstruction to see registration results.</p>
+              <div class="survey-reconstruction-actions"><button id="survey-view-cloud" type="button" disabled>VIEW RECONSTRUCTION</button><a id="survey-download-cloud" hidden download>DOWNLOAD PLY</a><button id="survey-reset-cloud" type="button" hidden>RESET VIEW</button></div>
+              <div id="survey-point-cloud" class="survey-point-cloud" tabindex="0" role="region" aria-label="Interactive reconstructed point cloud"><p>Select View reconstruction to load the 3D points.</p></div>
+              <p class="survey-note" id="survey-cloud-feedback" role="status">Reconstruction coordinates use arbitrary scale. Drag to orbit, scroll to zoom, and use arrow keys to pan.</p>
+              <div class="survey-sitl">
+                <div class="survey-section-heading"><h3>Stop and surface</h3><span class="outline-tag">SITL SIMULATION</span></div>
+                <p id="survey-sitl-state" class="survey-sitl-state" role="status">Checking the local depth simulator.</p>
+                <ol id="survey-sitl-events" class="survey-sitl-events" aria-label="Stop-and-surface events"></ol>
+                <button id="survey-stop-surface" type="button" disabled>STOP AND SURFACE</button>
+                <p class="survey-note" id="survey-sitl-feedback" role="status">The command first stops fin motion, then requests ascent in the depth simulation.</p>
+              </div>
             </div>
           </div>
         </div>

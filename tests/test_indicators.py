@@ -10,6 +10,7 @@ from manta_ray.ecology.metrics import WIDTH, analyze
 from manta_ray.ecology.validate import compare_masks, evaluate, read_pgm
 from manta_ray.ecology.water import WaterData
 from manta_ray.ecology.__main__ import parse_roi
+from manta_ray.ecology.simulation import PROFILE_NAME, simulated_tds_value
 
 
 def rgba_patch(coverage, color=(20, 130, 30), landscape=False):
@@ -123,6 +124,40 @@ class WaterTests(unittest.TestCase):
             self.make_csv(path, [(0, 10, "simulated", "", "", "", ""), (0, 20, "simulated", "", "", "", "")])
             with self.assertRaisesRegex(ValueError, "unique"):
                 WaterData(path)
+
+    def test_generated_tds_is_smooth_bounded_and_query_order_independent(self):
+        chronological = {timestamp: simulated_tds_value(timestamp) for timestamp in range(9)}
+        reverse = {timestamp: simulated_tds_value(timestamp) for timestamp in reversed(range(9))}
+        self.assertEqual(chronological, reverse)
+        self.assertGreater(max(chronological.values()) - min(chronological.values()), 1)
+        self.assertTrue(all(140 <= value <= 160 for value in chronological.values()))
+        dense = [simulated_tds_value(index / 10) for index in range(801)]
+        self.assertTrue(all(abs(after - before) <= 0.32 for before, after in zip(dense, dense[1:])))
+        self.assertNotEqual(simulated_tds_value(0, seed=42), simulated_tds_value(0, seed=43))
+        self.assertEqual(simulated_tds_value(1.5), simulated_tds_value(1.5))
+
+    def test_profile_zero_baseline_and_constant_opt_in(self):
+        zero_baseline = [simulated_tds_value(timestamp, baseline_ppm=0) for timestamp in range(100)]
+        self.assertTrue(all(0 <= value <= 10 for value in zero_baseline))
+        self.assertGreater(max(zero_baseline), 0)
+        water = WaterData(simulated=123, simulated_variation_ppm=0, simulated_seed=43)
+        self.assertEqual(water.match(0, 0).tds_ppm, 123)
+        self.assertEqual(water.match(7.5, 0).tds_ppm, 123)
+        self.assertEqual(water.summary()["constant_simulated_ppm"], 123)
+        variable = WaterData(simulated=150)
+        self.assertIsNone(variable.summary()["constant_simulated_ppm"])
+        self.assertEqual(variable.summary()["simulated_profile"]["name"], PROFILE_NAME)
+        self.assertEqual(variable.match(7.5, 0).tds_ppm, simulated_tds_value(7.5))
+        self.assertEqual(variable.match(7.5, 0).source, "simulated")
+        self.assertEqual(variable.match(7.5, 0).method, PROFILE_NAME)
+
+    def test_profile_rejects_nonfinite_boolean_and_negative_inputs(self):
+        for kwargs in ({"timestamp_s": -1}, {"timestamp_s": True}, {"timestamp_s": float("nan")},
+                       {"baseline_ppm": -1}, {"variation_ppm": -1}, {"variation_ppm": float("inf")},
+                       {"baseline_ppm": 1e308, "variation_ppm": 1e308}, {"seed": True}, {"seed": 1.5}):
+            values = {"timestamp_s": 0, **kwargs}
+            with self.subTest(kwargs=kwargs), self.assertRaises(ValueError):
+                simulated_tds_value(**values)
 
 
 class ValidationTests(unittest.TestCase):

@@ -14,6 +14,16 @@ test('serves only dashboard assets', async (t) => {
     assert.match(response.headers.get('content-type'), new RegExp(type));
     assert.ok((await response.text()).length > 0);
   }
+  for (const asset of ['/survey-panel.js', '/point-cloud-view.mjs', '/survey-panel.css', '/vendor/PLYLoader.js', '/vendor/OrbitControls.js']) {
+    const response = await fetch(base + asset);
+    assert.equal(response.status, 200);
+    const source = await response.text();
+    assert.ok(source.length > 0);
+    if (asset.startsWith('/vendor/')) {
+      assert.ok(source.includes("from '/vendor/three.module.js'"));
+      assert.ok(!source.includes("from 'three'"));
+    }
+  }
   assert.equal((await fetch(`${base}/server.js`)).status, 404);
   assert.equal((await fetch(`${base}/`, { method: 'POST' })).status, 404);
 });
