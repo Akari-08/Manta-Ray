@@ -170,7 +170,8 @@ function createAssessmentService({ root, python, loadSurvey } = {}) {
   async function handle(req, res, url, { authorized = false } = {}) {
     const assessment = /^\/api\/surveys\/ecology\/([a-f0-9]{32})\/assessment$/.exec(url.pathname);
     const stored = /^\/api\/ecology\/assessments\/([^/]+)(?:\/(audit|request))?$/.exec(url.pathname);
-    if (url.pathname !== '/api/ecology/methods' && !assessment && !stored) return false;
+    const standalone = url.pathname === '/api/ecology/assessments';
+    if (url.pathname !== '/api/ecology/methods' && !assessment && !stored && !standalone) return false;
     try {
       if (closed) throw problem(503, 'Assessment service is shutting down');
       if (req.method === 'GET' && url.pathname === '/api/ecology/methods') {
@@ -199,7 +200,7 @@ function createAssessmentService({ root, python, loadSurvey } = {}) {
           survey_id: assessment[1],
         }); return true;
       }
-      if (req.method === 'POST' && assessment) {
+      if (req.method === 'POST' && (assessment || standalone)) {
         const permitted = typeof authorized === 'function' ? authorized(req) : authorized;
         if (!permitted) throw problem(401, 'Valid control bearer token required');
         const request = await body(req);
@@ -207,12 +208,13 @@ function createAssessmentService({ root, python, loadSurvey } = {}) {
             || request.method.length > 120 || (request.include_simulated !== undefined && typeof request.include_simulated !== 'boolean')) {
           throw problem(400, 'Provide an assessment method and valid assessment inputs');
         }
+        if (standalone && request.method !== 'multispectral_ndci') throw problem(400, 'Standalone assessments require the multispectral_ndci method');
         if (Array.isArray(request.measurements) && request.measurements.length > 5000) throw problem(400, 'At most 5000 measurements are supported');
-        const survey = await loadSurvey(assessment[1]);
+        const survey = standalone ? { summary: {}, rows: [] } : await loadSurvey(assessment[1]);
         if (!survey) throw problem(404, 'Unknown ecological survey');
         const payload = { request, summary: survey.summary, rows: survey.rows };
         const report = await engine(payload);
-        json(res, 200, await persist(assessment[1], request, survey.summary, survey.rows, report));
+        json(res, 200, await persist(standalone ? null : assessment[1], request, survey.summary, survey.rows, report));
         return true;
       }
       throw problem(405, 'Method not supported for this assessment endpoint');

@@ -171,7 +171,7 @@ class AssessmentTests(unittest.TestCase):
         self.assertTrue(all(140 <= item["value"] <= 160 for item in first["generated_tds"]))
         self.assertEqual([item["value"] for item in first["generated_tds"]],
                          [simulated_tds_value(index) for index in range(3)])
-        self.assertEqual(first["engine_version"], "2.0.0")
+        self.assertEqual(first["engine_version"], "2.1.0")
         reversed_report = assess(before, {}, list(reversed(rows)))
         self.assertEqual({item["timestamp_s"]: item["value"] for item in first["generated_tds"]},
                          {item["timestamp_s"]: item["value"] for item in reversed_report["generated_tds"]})
@@ -221,7 +221,7 @@ class AssessmentTests(unittest.TestCase):
     def test_cli_stdin_and_catalog_emit_strict_json(self):
         result = subprocess.run([sys.executable, "-m", "manta_ray.ecology.assessment", "--catalog"], capture_output=True, text=True, timeout=20)
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertEqual(len(json.loads(result.stdout)), 3)
+        self.assertEqual({entry["id"] for entry in json.loads(result.stdout)}, {"benthic_point_cover", "video_maxn", "multispectral_ndci", "camera_tds"})
         result = subprocess.run([sys.executable, "-m", "manta_ray.ecology.assessment"],
                                 input=json.dumps({"request": {"method": "carlson_tsi"}}), capture_output=True, text=True, timeout=20)
         self.assertEqual(result.returncode, 0, result.stderr)

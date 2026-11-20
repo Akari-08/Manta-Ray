@@ -12,8 +12,9 @@ import sys
 
 from .simulation import simulated_tds_value, simulation_metadata
 from .image_survey import METHODS as IMAGE_METHODS, assess_images, catalog as image_catalog
+from .multispectral import METHOD as SPECTRAL_METHOD, assess_multispectral, catalog_entry as spectral_catalog_entry
 
-VERSION = "2.0.0"
+VERSION = "2.1.0"
 NALMS = "https://www.nalms.org/secchidipin/monitoring-methods/trophic-state-equations/"
 CCME = "https://ccme.ca/en/res/wqimanualen.pdf"
 CONDUCTIVITY = "https://archive.epa.gov/water/archive/web/html/vms59.html"
@@ -501,7 +502,7 @@ def catalog(include_legacy=False):
     context = {**legacy[0], "name": "Image quality and TDS context (baseline)",
                "scope": "Supporting observations; no ecological classification",
                "description": "Recording diagnostics, unvalidated green-pixel hints and sourced TDS. Use reviewed photoquadrats or video counts for biological observations."}
-    methods = image_catalog() + [context]
+    methods = image_catalog() + [spectral_catalog_entry(), context]
     if include_legacy:
         methods.extend({**item, "legacy": True, "scope": "Archived optional-input calculation; not supported by the onboard sensor set"}
                        for item in legacy[1:])
@@ -524,6 +525,8 @@ def assess(request, summary=None, rows=None):
         raise ValueError("include_simulated must be true or false")
     if request.get("site_id") is not None and not isinstance(request["site_id"], str):
         raise ValueError("site_id must be text")
+    if method == SPECTRAL_METHOD:
+        return assess_multispectral(request, summary, rows, VERSION)
     if method in IMAGE_METHODS:
         report = assess_images(request, summary, rows, VERSION)
         context_request = {key: request[key] for key in ("include_simulated", "simulate_tds", "measurements", "tds_reference", "site_id") if key in request}
