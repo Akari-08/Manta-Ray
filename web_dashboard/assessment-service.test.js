@@ -71,8 +71,8 @@ async function fixture(t, { real = false, loadSurvey } = {}) {
     const response = await fetch(base + route);
     return { status: response.status, value: await response.json() };
   }
-  async function post(data, authorized = true) {
-    const response = await fetch(base + '/api/surveys/ecology/' + SURVEY_ID + '/assessment', {
+  async function post(data, authorized = true, route = '/api/surveys/ecology/' + SURVEY_ID + '/assessment') {
+    const response = await fetch(base + route, {
       method: 'POST', headers: { 'Content-Type': 'application/json', ...(authorized ? { Authorization: 'Bearer control' } : {}) },
       body: JSON.stringify(data),
     });
@@ -189,8 +189,8 @@ test('real Python scientific engine catalog and assessment execute through HTTP'
   const { get, post } = await fixture(t, { real: true });
   const catalog = await get('/api/ecology/methods');
   assert.equal(catalog.status, 200);
-  assert.equal(catalog.value.length, 3);
-  assert.deepEqual(catalog.value.map(item => item.id), ['benthic_point_cover', 'video_maxn', 'camera_tds']);
+  assert.equal(catalog.value.length, 4);
+  assert.deepEqual(new Set(catalog.value.map(item => item.id)), new Set(['benthic_point_cover', 'video_maxn', 'camera_tds', 'multispectral_ndci']));
   const result = await post({ method: 'camera_tds', include_simulated: false });
   assert.equal(result.status, 200, JSON.stringify(result.value));
   assert.equal(typeof result.value.assessment, 'object');
@@ -206,7 +206,7 @@ test('real Python scientific engine catalog and assessment execute through HTTP'
     assert.equal(computed.value.assessment.status, 'computed');
     assert.equal(computed.value.assessment.scenario, true);
     assert.equal(computed.value.assessment.result.score, null);
-    assert.equal(computed.value.assessment.result.category, 'observations');
+    if (method.id !== 'multispectral_ndci') assert.equal(computed.value.assessment.result.category, 'observations');
   }
 });
 
@@ -234,4 +234,75 @@ test('reviewed image observations persist through HTTP and reject the wrong vide
   const mismatch = await post(request);
   assert.equal(mismatch.status, 400);
   assert.match(mismatch.value.error, /different source video/);
+});
+
+function spectralRequest(source = 'measured') {
+  return {
+    method: 'multispectral_ndci', include_simulated: false,
+    multispectral: {
+      capture_id: 'capture-1', captured_at: '2026-01-01T00:00:00Z', site_id: 'lake-a', sensor_id: 'camera-a',
+      source, geometry: 'above_water_surface', radiometry: 'water_leaving_reflectance',
+      calibration: { id: 'panel-1', method: 'vendor correction + panel', reference: 'calibration record', surface_reflection_correction: 'synthetic corrected fixture' },
+      registration: { verified: true, method: 'aligned bands' },
+      quality_mask: { reviewed: true, method: 'reviewed valid water exclusions', values: [0, 0, 2, 0] },
+      width: 2, height: 2,
+      bands: {
+        red: { center_nm: 665, fwhm_nm: 10, values: [0.02, 0.03, 0.02, 0.04] },
+        red_edge: { center_nm: 705, fwhm_nm: 10, values: [0.03, 0.03, 0.08, 0.02] },
+      },
+    },
+  };
+}
+
+test('standalone multispectral API needs authorization, preserves limits and requires its own method', { skip: !python }, async t => {
+  const { get, post } = await fixture(t, { loadSurvey: async () => { throw new Error('No RGB survey should be loaded'); } });
+  const route = '/api/ecology/assessments';
+  assert.equal((await post(spectralRequest(), false, route)).status, 401);
+  assert.equal((await get(route)).status, 405);
+  for (const request of [null, [], { method: 'camera_tds' }, { method: 'unknown' }, { method: 'multispectral_ndci', include_simulated: 1 }]) {
+    assert.equal((await post(request, true, route)).status, 400);
+  }
+  const oversized = await post({ method: 'multispectral_ndci', note: 'x'.repeat(270000) }, true, route);
+  assert.equal(oversized.status, 400);
+  assert.match(oversized.value.error, /256 KiB/);
+  const response = await post(spectralRequest(), true, route);
+  assert.equal(response.status, 200, JSON.stringify(response.value));
+  assert.equal(response.value.survey_id, null);
+  assert.deepEqual(response.value.assessment.inputs.summary, {});
+  assert.deepEqual(response.value.assessment.inputs.rows, []);
+});
+
+test('real multispectral capture executes without RGB, persists provenance and cannot infer toxins or lake health', { skip: !python }, async t => {
+  const { get, post } = await fixture(t, { real: true, loadSurvey: async () => { throw new Error('No RGB survey should be loaded'); } });
+  const route = '/api/ecology/assessments';
+  const request = spectralRequest();
+  const response = await post(request, true, route);
+  assert.equal(response.status, 200, JSON.stringify(response.value));
+  assert.equal(response.value.survey_id, null);
+  assert.equal(response.value.assessment.method_id, 'multispectral_ndci');
+  assert.equal(response.value.assessment.status, 'computed');
+  assert.equal(response.value.assessment.scenario, false);
+  assert.equal(response.value.assessment.result.pixel_quality.valid_pixels, 3);
+  assert.ok(Math.abs(response.value.assessment.result.ndci.mean - (-2 / 45)) < 1e-12);
+  assert.equal(response.value.assessment.result.score, null);
+  assert.equal(response.value.assessment.result.chlorophyll_a_ug_l, null);
+  assert.equal(response.value.assessment.result.toxin_status, 'not_measured');
+  assert.equal(response.value.assessment.result.overall_ecological_health, 'not_determined');
+  const audit = await get(response.value.audit_url);
+  assert.equal(audit.status, 200);
+  assert.deepEqual(audit.value.inputs.request, request);
+  assert.deepEqual(audit.value.inputs.summary, {});
+  assert.deepEqual(audit.value.inputs.rows, []);
+  assert.deepEqual((await get(response.value.report_url)).value, response.value);
+  const simulation = spectralRequest('simulated');
+  const excluded = await post(simulation, true, route);
+  assert.equal(excluded.status, 200, JSON.stringify(excluded.value));
+  assert.notEqual(excluded.value.assessment.status, 'computed');
+  simulation.include_simulated = true;
+  const included = await post(simulation, true, route);
+  assert.equal(included.status, 200, JSON.stringify(included.value));
+  assert.equal(included.value.assessment.scenario, true);
+  const malformed = spectralRequest();
+  malformed.multispectral.bands.red.values = [0.02];
+  assert.equal((await post(malformed, true, route)).status, 400);
 });

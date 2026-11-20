@@ -26,7 +26,7 @@ def point_frame(labels=("macrophyte", "rock", "unknown"), frame_id="A", timestam
 
 class ImageObservationTests(unittest.TestCase):
     def test_catalog_uses_camera_methods_and_archives_sensor_indices(self):
-        self.assertEqual({item["id"] for item in catalog()}, {"benthic_point_cover", "video_maxn", "camera_tds"})
+        self.assertEqual({item["id"] for item in catalog()}, {"benthic_point_cover", "video_maxn", "multispectral_ndci", "camera_tds"})
         self.assertTrue(all(item["legacy"] for item in catalog(include_legacy=True) if item["id"] in {"ccme_wqi", "carlson_tsi"}))
 
     def test_point_denominator_unknown_bounds_and_no_health_score(self):

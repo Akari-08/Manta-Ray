@@ -83,6 +83,20 @@ The same recording can be processed through COLMAP to reconstruct visible featur
 
 Reconstruction coordinates have arbitrary scale until a known reference establishes physical dimensions. Camera calibration, underwater optical effects and independent geometric checks are required before using the model to report accurate area or volume. Reconstruction supplies geometry; biological identity comes from image interpretation.
 
+### 2.5. Multispectral Screening for Algal Enrichment
+
+Manta Ray also accepts multispectral captures as a separate input to ecological analysis. Camera-specific processing must synchronise and register the bands, convert sensor measurements into calibrated water reflectance, and account for surface reflections. The backend checks acquisition and calibration records and a reviewed quality mask. Non-water objects, glint, shadows, visible bottom, vegetation, saturated pixels and missing data are excluded. An optional camera-specific signal threshold excludes measurements below a documented usable signal level.
+
+For retained pixels, the normalised difference chlorophyll index is calculated using Equation (2):
+
+$$
+\mathrm{NDCI} = \frac{R_{\mathrm{red\mbox{-}edge}}-R_{\mathrm{red}}}{R_{\mathrm{red\mbox{-}edge}}+R_{\mathrm{red}}} \qquad (2)
+$$
+
+The method uses red and red-edge measurements near 665 and 705–708 nm to describe relative chlorophyll-related spectral contrast [4]. Reports retain index statistics, valid-sample fractions, exclusions and calibration provenance. The file adapter accepts separate calibrated grayscale TIFF or PGM bands and exports a sampled index map and quantitative records. Its documented sampling grid describes sampled pixels rather than full-resolution bloom area. A camera-specific driver supplies captures to this interface.
+
+Elevated or increasing pigment signals can guide investigation of algal enrichment, which can reduce light penetration and oxygen availability [5]. The index does not independently establish chlorophyll concentration, cyanobacterial identity, toxins or overall lake health. Those conclusions require appropriate field measurements and validation. This implementation supports above-water surface observations; submerged downward imagery requires a separately validated optical model.
+
 ## 3. Sensor Context and Ecological Analysis
 
 The system's sensing baseline comprises cameras, a TDS probe and an MPU. Cameras provide visible habitat and animal observations. TDS readings describe dissolved-solids context and are matched to video timestamps within a defined tolerance; unmatched readings remain missing. The MPU supplies vehicle acceleration and angular velocity for motion monitoring. Synchronising MPU readings with individual frames for motion-related quality checks is a planned integration, rather than an existing automatic correction.
@@ -120,5 +134,9 @@ Verification includes numerical fixtures, real model inference on saved recordin
 [2] Varini, F., Morris, D., Burniston, S., Boulais, O., Barnard, K., et al. (2026). *Community Fish Detector*. [Model repository](https://github.com/filippovarini/community-fish-detector).
 
 [3] Canadian Council of Ministers of the Environment (2017). *CCME Water Quality Index User's Manual: 2017 Update*. [Method manual](https://ccme.ca/en/res/wqimanualen.pdf).
+
+[4] Mishra, S., & Mishra, D. R. (2012). Normalized difference chlorophyll index: A novel model for remote estimation of chlorophyll-a concentration in turbid productive waters. *Remote Sensing of Environment, 117*, 394–406. [https://doi.org/10.1016/j.rse.2011.10.016](https://doi.org/10.1016/j.rse.2011.10.016).
+
+[5] U.S. Environmental Protection Agency (2026). *What Are the Effects of HABs?* [Ecosystem effects](https://www.epa.gov/habs/what-are-effects-habs).
 
 Further scientific sources and sampling considerations are retained in [research.md](research.md); operational instructions are in [GUIDE.md](GUIDE.md).

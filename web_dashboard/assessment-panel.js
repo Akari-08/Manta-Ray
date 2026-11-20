@@ -1,6 +1,6 @@
 const element = id => document.getElementById(id);
 const title = value => String(value).replaceAll('_', ' ');
-const researchMetadataFields = ['site_id', 'period', 'context', 'point_frames', 'video_review'];
+const researchMetadataFields = ['site_id', 'period', 'context', 'point_frames', 'video_review', 'multispectral', 'screening_rule', 'include_index_map'];
 
 function researchMetadata(input) {
   return Object.fromEntries(researchMetadataFields.filter(key => Object.hasOwn(input, key)).map(key => [key, input[key]]));
@@ -22,13 +22,15 @@ function textBlock(tag, text) {
 function valuesList(data, target, prefix = '') {
   if (!data || typeof data !== 'object') return;
   for (const [key, value] of Object.entries(data)) {
-    if (value === undefined || key === 'label') continue;
+    if (value === undefined || ['label', 'index_map', 'ndci_map'].includes(key)) continue;
     const name = prefix ? `${prefix} · ${title(key)}` : title(key);
     if (value !== null && typeof value === 'object' && !Array.isArray(value)) {
       valuesList(value, target, name);
     } else {
       const row = document.createElement('div');
-      const formatted = typeof value === 'number' ? new Intl.NumberFormat(undefined, { maximumFractionDigits: 4 }).format(value) :
+      const formatted = typeof value === 'number' ? new Intl.NumberFormat(undefined, {
+        maximumFractionDigits: 4, ...(value !== 0 && Math.abs(value) < 1e-4 ? { notation: 'scientific' } : {}),
+      }).format(value) :
         value === null ? 'Unavailable' : Array.isArray(value) ? JSON.stringify(value) : String(value);
       const displayName = name === 'imagery · vegetation validation' ? 'Plant-cover validation' : name;
       const displayValue = name === 'imagery · vegetation validation' && value === 'independent labels required'
@@ -77,7 +79,8 @@ function renderReport(payload) {
   element('assessment-values').replaceChildren();
   const summaryValues = Object.fromEntries(Object.entries(result).filter(([key]) =>
     !['tds_observations', 'tests', 'objectives'].includes(key) &&
-    !(key === 'score' && report.method_id === 'camera_tds')));
+    !(key === 'score' && report.method_id === 'camera_tds') &&
+    !(report.method_id === 'multispectral_ndci' && ['score', 'category'].includes(key) && result[key] === null)));
   valuesList(summaryValues, element('assessment-values'));
   const evidence = element('assessment-evidence');
   evidence.replaceChildren();
@@ -113,9 +116,11 @@ export function initAssessmentPanel({ token, onReport = () => {} }) {
   let calculating = false;
   const feedback = message => { element('assessment-feedback').textContent = message; };
 
+  const isMultispectral = () => element('assessment-method').value === 'multispectral_ndci';
+
   function controls() {
-    element('assessment-calculate').disabled = calculating || !selected || !methods.length;
-    element('assessment-tds-controls').hidden = false;
+    element('assessment-calculate').disabled = calculating || (!selected && !isMultispectral()) || !methods.length;
+    element('assessment-tds-controls').hidden = isMultispectral();
     element('assessment-tds-options').hidden = !element('assessment-simulate-tds').checked;
   }
 
@@ -128,8 +133,9 @@ export function initAssessmentPanel({ token, onReport = () => {} }) {
   }
 
   async function calculate() {
-    if (!selected || !methods.length || disposed) return;
+    if ((!selected && !isMultispectral()) || !methods.length || disposed) return;
     const method = element('assessment-method').value;
+    const spectral = isMultispectral();
     const current = ++generation;
     const id = selected;
     calculating = true;
@@ -139,7 +145,7 @@ export function initAssessmentPanel({ token, onReport = () => {} }) {
     element('assessment-report').hidden = true;
     try {
       let payload;
-      const url = `/api/surveys/ecology/${encodeURIComponent(id)}/assessment`;
+      const url = spectral ? '/api/ecology/assessments' : `/api/surveys/ecology/${encodeURIComponent(id)}/assessment`;
       const input = JSON.parse(element('assessment-inputs').value);
       if (!input || Array.isArray(input) || typeof input !== 'object') throw new Error('Research inputs must be a JSON object.');
       if (!Array.isArray(input.measurements || []) || !Array.isArray(input.objectives || [])) throw new Error('Measurements and objectives must be JSON arrays.');
@@ -148,9 +154,9 @@ export function initAssessmentPanel({ token, onReport = () => {} }) {
         (typeof value !== 'string' || value.trim().length > 0) &&
         (!Array.isArray(value) || value.length > 0));
       const hasResearchInputs = (input.measurements?.length || input.objectives?.length || input.tds_reference || hasMetadata);
-      const customSimulation = element('assessment-simulate-tds').checked &&
+      const customSimulation = !spectral && element('assessment-simulate-tds').checked &&
         (Number(element('assessment-seed').value) !== 42 || Number(element('assessment-baseline').value) !== 150 || Number(element('assessment-variation').value) !== 10);
-      if (!token() && !hasResearchInputs && !customSimulation) {
+      if (!spectral && !token() && !hasResearchInputs && !customSimulation) {
         const query = new URLSearchParams({ method });
         if (element('assessment-include-simulated').checked) query.set('include_simulated', '1');
         if (element('assessment-simulate-tds').checked) {
@@ -164,7 +170,7 @@ export function initAssessmentPanel({ token, onReport = () => {} }) {
         const include = element('assessment-include-simulated').checked;
         const body = { ...metadata, method, include_simulated: include, measurements: input.measurements || [], objectives: input.objectives || [] };
         if (input.tds_reference) body.tds_reference = input.tds_reference;
-        if (element('assessment-simulate-tds').checked) {
+        if (!spectral && element('assessment-simulate-tds').checked) {
           if (!include) throw new Error('Enable the simulated scenario checkbox to include generated TDS.');
           const seed = Number(element('assessment-seed').value);
           const baseline = Number(element('assessment-baseline').value);
@@ -194,7 +200,7 @@ export function initAssessmentPanel({ token, onReport = () => {} }) {
     }
   }
 
-  function methodChanged() {
+  function methodChanged({ calculateOnSelect = true } = {}) {
     invalidate();
     const method = methods.find(item => item.id === element('assessment-method').value);
     element('assessment-description').textContent = method ? `${method.scope} · ${method.description}` : '';
@@ -212,8 +218,13 @@ export function initAssessmentPanel({ token, onReport = () => {} }) {
         sources.append(anchor);
       } catch {}
     }
-    feedback(selected ? 'Choose inputs and calculate the selected method.' : 'Select a saved image analysis.');
-    if (selected) calculate();
+    if (isMultispectral()) {
+      element('assessment-include-simulated').checked = false;
+      feedback('Import a calibrated multispectral capture request, or load the explicitly simulated example. No RGB survey is required.');
+    } else {
+      feedback(selected ? 'Choose inputs and calculate the selected method.' : 'Select a saved image analysis.');
+      if (selected && calculateOnSelect) calculate();
+    }
   }
 
   element('assessment-method').addEventListener('change', methodChanged);
@@ -221,6 +232,34 @@ export function initAssessmentPanel({ token, onReport = () => {} }) {
   for (const id of ['assessment-include-simulated', 'assessment-simulate-tds', 'assessment-seed', 'assessment-baseline', 'assessment-variation', 'assessment-inputs']) {
     element(id).addEventListener('input', invalidate);
   }
+  element('assessment-import').addEventListener('change', async event => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    invalidate();
+    const current = generation;
+    try {
+      if (file.size > 256 * 1024) throw new Error('Assessment JSON exceeds 256 KiB. Export a smaller calibrated sample grid.');
+      const envelope = JSON.parse(await file.text());
+      const input = envelope?.request || envelope;
+      if (!input || Array.isArray(input) || typeof input !== 'object') throw new Error('Import a request object or an envelope containing request.');
+      if (!methods.some(item => item.id === input.method)) throw new Error('The imported request has an unknown observation method.');
+      if (disposed || current !== generation) return;
+      element('assessment-method').value = input.method;
+      element('assessment-inputs').value = JSON.stringify({
+        ...researchMetadata(input), measurements: input.measurements || [], objectives: input.objectives || [],
+        ...(input.tds_reference ? { tds_reference: input.tds_reference } : {}),
+      }, null, 2);
+      element('assessment-include-simulated').checked = false;
+      methodChanged({ calculateOnSelect: false });
+      feedback('Request imported. Review the inputs and calculate. Simulated data requires a separate explicit opt-in.');
+    } catch (error) {
+      if (!disposed && current === generation) feedback(error.message);
+    } finally {
+      // Clear even a stale read so the same file can be selected again.
+      event.target.value = '';
+    }
+  });
+
   element('assessment-example').addEventListener('click', () => {
     const method = methods.find(item => item.id === element('assessment-method').value);
     const example = method?.example || {};
@@ -245,6 +284,7 @@ export function initAssessmentPanel({ token, onReport = () => {} }) {
       return option;
     }));
     select.disabled = !methods.length;
+    element('assessment-import').disabled = !methods.length;
     if (methods.some(item => item.id === 'benthic_point_cover')) select.value = 'benthic_point_cover';
     methodChanged();
   }).catch(error => { if (!disposed) feedback(error.message); });
@@ -253,6 +293,10 @@ export function initAssessmentPanel({ token, onReport = () => {} }) {
     selectSurvey(id, detail) {
       selected = id || null;
       invalidate();
+      if (isMultispectral()) {
+        feedback('Multispectral captures are assessed independently of the selected RGB recording.');
+        return;
+      }
       if (!selected) { feedback('Select a saved image analysis.'); return; }
       const type = detail?.summary?.source?.type || 'unknown';
       const simulated = type === 'stock' || type === 'unknown' || type === 'synthetic';

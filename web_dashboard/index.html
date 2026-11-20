@@ -144,12 +144,18 @@
                   <div><dt>Candidate green cover</dt><dd id="survey-green-cover">Unavailable</dd></div>
                   <div><dt>Usable views</dt><dd id="survey-usable">Unavailable</dd></div>
                   <div><dt>TDS source</dt><dd id="survey-tds-source">Unavailable</dd></div>
-                  <div><dt>Assessment status</dt><dd id="assessment-status">Choose a method</dd></div>
                 </dl>
                 <p class="survey-note">Candidate green cover describes image pixels. Vegetation identification needs reference labels. View quality measures recording conditions.</p>
                 <p id="survey-life-status" class="survey-note">Aquatic life: not assessed. An organism detector and tracker are required.</p>
+                <div class="survey-chart"><span class="overline">CANDIDATE GREEN COVER · % OF SELECTED VIEW</span><svg id="survey-cover-chart" viewBox="0 0 600 155" role="img" aria-label="Candidate green cover over recording time"></svg></div>
+                <div class="survey-chart"><span class="overline">TDS OBSERVATIONS · PPM</span><svg id="survey-tds-chart" viewBox="0 0 600 155" role="img" aria-label="TDS over recording time, colored by measured or simulated source"></svg><p class="survey-chart-key"><span class="key-measured">Measured</span><span class="key-simulated">Simulated</span><span>Gaps indicate missing observations</span></p></div>
+                <div class="survey-table-wrap"><table class="survey-table"><caption>Latest sampled views</caption><thead><tr><th scope="col">Time · s</th><th scope="col">Quality</th><th scope="col">Green · %</th><th scope="col">TDS · ppm</th><th scope="col">Source</th></tr></thead><tbody id="survey-observation-rows"></tbody></table></div>
+                <div class="survey-downloads" id="survey-downloads"></div>
+                <details class="survey-overlay-links"><summary>Saved overlay files</summary><div id="survey-overlay-downloads" class="survey-downloads"></div></details>
+              </div>
                 <section class="assessment-panel" aria-labelledby="assessment-title">
                   <h4 id="assessment-title">Camera-led ecological observations</h4>
+                  <p id="assessment-status" class="survey-note" role="status">Choose a method</p>
                   <label class="assessment-label" for="assessment-method">Observation method</label>
                   <select id="assessment-method" disabled><option value="">Loading methods…</option></select>
                   <p id="assessment-description" class="survey-note"></p>
@@ -170,6 +176,9 @@
                       <summary>Reviewed observations and sampling metadata</summary>
                       <p class="survey-note">Photoquadrats use point_frames from a completed review bundle. Aquatic-life counts use video_review with taxa, timestamped counts, reviewer and camera mode. Paste the request object from the packaged JSON. TDS remains supporting context; these methods do not calculate a universal lake-health score.</p>
                       <button id="assessment-example" type="button">LOAD SIMULATED EXAMPLE</button>
+                      <label class="assessment-label" for="assessment-import">Import assessment request · JSON</label>
+                      <input id="assessment-import" type="file" accept="application/json,.json" disabled>
+                      <p class="survey-note">Multispectral requests contain calibrated, aligned bands and a reviewed valid-water mask. Import assessment-request.json from the spectral workflow; no RGB survey is required.</p>
                       <label class="assessment-label" for="assessment-inputs">Research inputs · JSON</label>
                       <textarea id="assessment-inputs" rows="9" spellcheck="false">{}</textarea>
                     </details>
@@ -184,12 +193,6 @@
                     <details><summary>Calculation trace and evidence</summary><div id="assessment-evidence"></div></details>
                   </div>
                 </section>
-                <div class="survey-chart"><span class="overline">CANDIDATE GREEN COVER · % OF SELECTED VIEW</span><svg id="survey-cover-chart" viewBox="0 0 600 155" role="img" aria-label="Candidate green cover over recording time"></svg></div>
-                <div class="survey-chart"><span class="overline">TDS OBSERVATIONS · PPM</span><svg id="survey-tds-chart" viewBox="0 0 600 155" role="img" aria-label="TDS over recording time, colored by measured or simulated source"></svg><p class="survey-chart-key"><span class="key-measured">Measured</span><span class="key-simulated">Simulated</span><span>Gaps indicate missing observations</span></p></div>
-                <div class="survey-table-wrap"><table class="survey-table"><caption>Latest sampled views</caption><thead><tr><th scope="col">Time · s</th><th scope="col">Quality</th><th scope="col">Green · %</th><th scope="col">TDS · ppm</th><th scope="col">Source</th></tr></thead><tbody id="survey-observation-rows"></tbody></table></div>
-                <div class="survey-downloads" id="survey-downloads"></div>
-                <details class="survey-overlay-links"><summary>Saved overlay files</summary><div id="survey-overlay-downloads" class="survey-downloads"></div></details>
-              </div>
             </div>
             <div class="survey-result-section">
               <div class="survey-section-heading"><h3>3D reconstruction</h3><label for="survey-reconstruction-result" class="sr-only">Saved reconstruction</label><select id="survey-reconstruction-result" disabled><option value="">No saved reconstructions</option></select></div>
