@@ -2,19 +2,22 @@
 const http = require('node:http');
 const { readFile } = require('node:fs/promises');
 const path = require('node:path');
-const { randomUUID, timingSafeEqual } = require('node:crypto');
+const { randomUUID, randomBytes, timingSafeEqual } = require('node:crypto');
 const { isIP } = require('node:net');
 const { WebSocketServer, WebSocket } = require('ws');
 const { VERSION, LIMITS, validateTelemetry, validateCommand, validateAck } = require('./protocol');
 const { createSurveyService } = require('./survey-service');
 const { createSitlService } = require('./sitl-service');
 const { createAssessmentService } = require('./assessment-service');
+const { validateRobloxImu } = require('./roblox-imu');
+const { BYTES: RAYCAST_BYTES, encodeFrame } = require('./roblox-camera');
 const files = { '/': ['index.html', 'text/html'], '/styles.css': ['styles.css', 'text/css'], '/app.js': ['app.js', 'text/javascript'], '/live-client.js': ['live-client.js', 'text/javascript'], '/commands.mjs': ['commands.mjs', 'text/javascript'], '/motion-model.mjs': ['motion-model.mjs', 'text/javascript'], '/fish-view.mjs': ['fish-view.mjs', 'text/javascript'], '/location-map.mjs': ['location-map.mjs', 'text/javascript'], '/vendor/three.module.js': ['node_modules/three/build/three.module.js', 'text/javascript'], '/vendor/three.core.js': ['node_modules/three/build/three.core.js', 'text/javascript'], '/vendor/maplibre-gl.mjs': ['node_modules/maplibre-gl/dist/maplibre-gl.mjs', 'text/javascript'], '/vendor/maplibre-gl-worker.mjs': ['node_modules/maplibre-gl/dist/maplibre-gl-worker.mjs', 'text/javascript'], '/vendor/maplibre-gl.css': ['node_modules/maplibre-gl/dist/maplibre-gl.css', 'text/css'] };
 Object.assign(files, {
   '/survey-panel.js': ['survey-panel.js', 'text/javascript'],
   '/assessment-panel.js': ['assessment-panel.js', 'text/javascript'],
   '/survey-observations.mjs': ['survey-observations.mjs', 'text/javascript'],
   '/point-cloud-view.mjs': ['point-cloud-view.mjs', 'text/javascript'],
+  '/mission-planner.mjs': ['mission-planner.mjs', 'text/javascript'],
   '/survey-panel.css': ['survey-panel.css', 'text/css'],
   '/vendor/PLYLoader.js': ['node_modules/three/examples/jsm/loaders/PLYLoader.js', 'text/javascript'],
   '/vendor/OrbitControls.js': ['node_modules/three/examples/jsm/controls/OrbitControls.js', 'text/javascript'],
@@ -34,20 +37,24 @@ function cameraURLs(t, peer) {
   }
 }
 function createServer(options = {}) {
-  const cfg = { deviceToken: process.env.DEVICE_TOKEN, controlToken: process.env.CONTROL_TOKEN, robotId: process.env.ROBOT_ID || 'manta-01', allowSimulator: process.env.ALLOW_SIMULATOR === '1', demoAccess: false, staleMs: 2000, deadMs: 5000, heartbeatMs: 500, leaseMs: 2000, historySize: 600, now: Date.now, ...options };
+  const cfg = { deviceToken: process.env.DEVICE_TOKEN, controlToken: process.env.CONTROL_TOKEN, robloxImuToken: randomBytes(32).toString('hex'), robotId: process.env.ROBOT_ID || 'manta-01', allowSimulator: process.env.ALLOW_SIMULATOR === '1', demoAccess: false, staleMs: 2000, deadMs: 5000, heartbeatMs: 500, leaseMs: 2000, historySize: 600, now: Date.now, ...options };
+  const tunnelSecret = randomBytes(32).toString('hex');
   if (!cfg.deviceToken || cfg.deviceToken.length < 24 || !cfg.controlToken || cfg.controlToken.length < 24 || equal(cfg.deviceToken, cfg.controlToken) || cfg.deviceToken.startsWith('replace-') || cfg.controlToken.startsWith('replace-')) throw new Error('Set distinct random DEVICE_TOKEN and CONTROL_TOKEN (at least 24 characters each; replace example values)');
   const survey = createSurveyService({ root: cfg.surveyRoot || path.resolve(__dirname, '..'), python: cfg.python, colmap: cfg.colmap });
   const assessments = createAssessmentService({ root: cfg.surveyRoot || path.resolve(__dirname, '..'), python: cfg.python, loadSurvey: id => survey.ecologyDetail(id) });
   const sitl = createSitlService({ baseUrl: cfg.sitlUrl, enabled: cfg.sitlEnabled ?? process.env.ENABLE_SITL === '1', allowSimulator: cfg.allowSimulator });
   let device = null, latest = null, receivedAt = null, controlUntil = 0, shuttingDown = false;
-  let history = [], commandLog = new Map(), captureRequests = 0;
+  let history = [], commandLog = new Map(), captureRequests = 0, mission = null, robloxImu = null, robloxCamera = null, cameraUploadBusy = false;
   const viewers = new Set(), sockets = new Set(), frames = new Map();
   let cv = { available: false, reason: 'No live CV worker result. Offline green-cover screening is not validated vegetation coverage.', result: null };
   const json = (res, status, data) => { res.writeHead(status, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' }); res.end(JSON.stringify(data)); };
   const authorized = req => equal(req.headers.authorization, `Bearer ${cfg.controlToken}`);
   function state() {
     const age = receivedAt === null ? null : Math.max(0, cfg.now() - receivedAt);
-    return { schema_version: VERSION, type: 'state', robot_id: cfg.robotId, backend_time: new Date(cfg.now()).toISOString(), received_at: receivedAt === null ? null : new Date(receivedAt).toISOString(), age_ms: age, connection: !device ? 'disconnected' : !latest || age > cfg.staleMs ? 'stale' : 'live', stale: !device || age === null || age > cfg.staleMs, control_active: !!device && cfg.now() < controlUntil, telemetry: latest, limits: LIMITS, cv: { ...cv, stale: !device || !cv.result || cfg.now() - Date.parse(cv.result.received_at) > 5000 } };
+    const fresh = !!device && age !== null && age <= cfg.staleMs;
+    const useRoblox = fresh && latest?.source === 'simulator' && robloxImu && cfg.now() - robloxImu.receivedAt <= 2500;
+    const telemetry = useRoblox ? { ...latest, imu: robloxImu.imu } : latest;
+    return { schema_version: VERSION, type: 'state', robot_id: cfg.robotId, backend_time: new Date(cfg.now()).toISOString(), received_at: receivedAt === null ? null : new Date(receivedAt).toISOString(), age_ms: age, connection: !device ? 'disconnected' : !latest || age > cfg.staleMs ? 'stale' : 'live', stale: !fresh, control_active: !!device && cfg.now() < controlUntil, telemetry, imu_source: useRoblox ? 'roblox' : (latest?.source || null), imu_received_at: useRoblox ? new Date(robloxImu.receivedAt).toISOString() : (receivedAt === null ? null : new Date(receivedAt).toISOString()), roblox_yaw_deg: useRoblox ? robloxImu.yaw_deg : null, roblox_position: useRoblox && mission && robloxImu.position?.mission_id === mission.id ? robloxImu.position : null, roblox_camera: fresh && latest?.source === 'simulator' && robloxCamera && cfg.now() - robloxCamera.receivedAt <= 8000 ? { frame_id: robloxCamera.id, received_at: new Date(robloxCamera.receivedAt).toISOString(), source: 'roblox-raycast', width: 128, height: 72 } : null, limits: LIMITS, cv: { ...cv, stale: !device || !cv.result || cfg.now() - Date.parse(cv.result.received_at) > 5000 } };
   }
   function send(ws, data) {
     if (ws.readyState !== WebSocket.OPEN) return false;
@@ -62,7 +69,7 @@ function createServer(options = {}) {
   }
   function lost(ws) {
     if (device?.ws !== ws) return;
-    device = null; controlUntil = 0;
+    device = null; controlUntil = 0; robloxImu = null; robloxCamera = null;
     for (const r of commandLog.values()) if (r.status === 'pending') finish(r, 'disconnected', 'Device disconnected; outcome unknown. Command will never be replayed.');
     publish();
   }
@@ -121,6 +128,66 @@ function createServer(options = {}) {
         res.writeHead(200, { 'Content-Type': `${type}; charset=utf-8`, 'Content-Security-Policy': "default-src 'self'; script-src 'self'; worker-src 'self'; style-src 'self'; img-src 'self' http: blob: data:; media-src 'self' blob:; connect-src 'self' https://tiles.openfreemap.org; frame-ancestors 'none'; base-uri 'none'", 'Cache-Control': 'no-cache' }); res.end(content); return;
       }
       if (req.method === 'GET' && u.pathname === '/api/state') return json(res, 200, state());
+      if (u.pathname === '/api/mission') {
+        if (req.method === 'GET') return json(res, 200, { mission });
+        if (req.method === 'POST') {
+          const tunneled = equal(req.headers['x-manta-tunnel'], tunnelSecret);
+          if (tunneled && !authorized(req)) return json(res, 401, { error: 'Valid control bearer token required' });
+          const peer = normalizeIP(req.socket.remoteAddress), port = server.address()?.port;
+          const hosts = [`127.0.0.1:${port}`, `localhost:${port}`];
+          if (port === 80) hosts.push('127.0.0.1', 'localhost');
+          if (!tunneled && (!(peer === '::1' || /^127\./.test(peer || '')) || !hosts.includes(req.headers.host) ||
+              (req.headers['sec-fetch-site'] && !['same-origin', 'none'].includes(req.headers['sec-fetch-site']))))
+            return json(res, 403, { error: 'Mission previews can only be created from localhost.' });
+          const request = await body(req);
+          if (!request || Object.keys(request).sort().join(',') !== 'settings,vertices') throw new Error('Expected vertices and settings.');
+          const { createPreview } = await import('./mission-planner.mjs');
+          mission = { id: randomUUID(), created_at: new Date(cfg.now()).toISOString(), ...createPreview(request.vertices, request.settings) };
+          return json(res, 201, { mission });
+        }
+        return json(res, 405, { error: 'Method not allowed' });
+      }
+      if (u.pathname === '/api/roblox/imu') {
+        if (req.method !== 'POST') return json(res, 405, { error: 'POST required' });
+        if (!equal(req.headers.authorization, `Bearer ${cfg.robloxImuToken}`)) return json(res, 401, { error: 'Valid Roblox IMU token required' });
+        const current = state();
+        if (current.stale || current.telemetry?.source !== 'simulator' || !cfg.allowSimulator)
+          return json(res, 409, { error: 'Fresh simulator telemetry required; hardware is never overridden' });
+        const sample = validateRobloxImu(await body(req)), now = cfg.now();
+        if (robloxImu && now - robloxImu.receivedAt <= 2500 && sample.session_id !== robloxImu.session_id)
+          return json(res, 409, { error: 'Another Roblox session is active' });
+        if (robloxImu && sample.session_id === robloxImu.session_id && sample.seq <= robloxImu.seq)
+          return json(res, 409, { error: 'Out-of-order IMU sample' });
+        if (robloxImu && now - robloxImu.receivedAt < 100)
+          return json(res, 429, { error: 'IMU update rate exceeded' });
+        robloxImu = { ...sample, receivedAt: now };
+        publish();
+        return json(res, 200, { accepted: true });
+      }
+      if (u.pathname === '/api/roblox/camera') {
+        if (req.method !== 'POST') return json(res, 405, { error: 'POST required' });
+        if (!equal(req.headers.authorization, `Bearer ${cfg.robloxImuToken}`)) return json(res, 401, { error: 'Valid Roblox token required' });
+        const current = state();
+        if (current.stale || current.telemetry?.source !== 'simulator' || !cfg.allowSimulator) return json(res, 409, { error: 'Fresh simulator required' });
+        if (req.headers['content-type'] !== 'application/octet-stream') return json(res, 400, { error: 'Raw RGBA required' });
+        if (cameraUploadBusy || (robloxCamera && cfg.now() - robloxCamera.receivedAt < 500)) return json(res, 429, { error: 'Camera update rate exceeded' });
+        cameraUploadBusy = true;
+        const session = device.sessionId;
+        try {
+          req.setTimeout(5000, () => req.destroy(new Error('Frame upload timed out')));
+          const chunks = []; let size = 0;
+          for await (const part of req) { size += part.length; if (size > RAYCAST_BYTES) throw new Error('Frame exceeds size limit'); chunks.push(part); }
+          const raw = Buffer.concat(chunks);
+          if (raw.length !== RAYCAST_BYTES) throw new Error('Invalid frame size');
+          if (device?.sessionId !== session || state().stale || device.source !== 'simulator') return json(res, 409, { error: 'Simulator changed during upload' });
+          robloxCamera = { id: randomUUID(), receivedAt: cfg.now(), png: encodeFrame(raw) };
+          publish(); return json(res, 200, { accepted: true });
+        } finally { cameraUploadBusy = false; }
+      }
+      if (u.pathname === '/api/roblox/camera/frame' && req.method === 'GET') {
+        if (!state().roblox_camera) return json(res, 503, { error: 'Simulated raycast frame unavailable or stale' });
+        res.writeHead(200, { 'Content-Type': 'image/png', 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' }); res.end(robloxCamera.png); return;
+      }
       if (req.method === 'GET' && u.pathname === '/api/history') return json(res, 200, { schema_version: VERSION, samples: history });
       if (req.method === 'GET' && u.pathname === '/api/cv') return json(res, 200, state().cv);
       if (req.method === 'GET' && u.pathname === '/api/camera/frame') {
@@ -131,6 +198,7 @@ function createServer(options = {}) {
         if (!authorized(req)) return json(res, 401, { error: 'Valid control bearer token required' });
         if (req.method === 'POST' && u.pathname === '/api/control/heartbeat') {
           if (state().stale) return json(res, 409, { error: 'Fresh device telemetry required' });
+          if (equal(req.headers['x-manta-tunnel'], tunnelSecret) && state().telemetry?.source !== 'simulator') return json(res, 409, { error: 'Remote vehicle control is simulator-only' });
           controlUntil = cfg.now() + cfg.leaseMs;
           send(device.ws, { schema_version: VERSION, type: 'heartbeat', session_id: device.sessionId, control_active: true });
           return json(res, 200, { active: true, expires_in_ms: cfg.leaseMs });
@@ -144,6 +212,8 @@ function createServer(options = {}) {
           if (existing) return json(res, 409, { error: 'Command ID already used; not replayed', command: publicRecord(existing) });
           const s = state();
           if (s.stale) return json(res, 409, { error: 'Device disconnected or stale; commands never queued' });
+          if (equal(req.headers['x-manta-tunnel'], tunnelSecret) && s.telemetry?.source !== 'simulator') return json(res, 409, { error: 'Remote vehicle control is simulator-only' });
+          if (c.action === 'set_syringe_volume' && (device.source !== 'simulator' || latest.source !== 'simulator' || !cfg.allowSimulator)) return json(res, 409, { error: 'Syringe volume is simulation-only' });
           if (c.action !== 'stop' && !s.control_active) return json(res, 409, { error: 'Enable control heartbeat before movement' });
           if (c.action !== 'stop' && !latest.control.outputs_enabled) return json(res, 409, { error: 'Servo outputs disabled in firmware configuration' });
           if (c.action === 'set_syringe' && latest.control.actuator_state === 'disabled') return json(res, 409, { error: 'Syringe model, limits and output not configured' });
@@ -193,7 +263,8 @@ function createServer(options = {}) {
             validateTelemetry(msg); cameraURLs(msg, req.socket.remoteAddress);
             if (msg.robot_id !== cfg.robotId || msg.source !== device.source || msg.seq <= lastSeq || msg.uptime_ms < lastUptime) throw new Error('Identity mismatch or out-of-order telemetry');
             lastSeq = msg.seq; lastUptime = msg.uptime_ms; device.lastSeen = cfg.now(); latest = msg; receivedAt = cfg.now();
-            history.push({ received_at: new Date(receivedAt).toISOString(), telemetry: msg }); if (history.length > cfg.historySize) history.shift(); publish();
+            const snapshot = state();
+            history.push({ received_at: new Date(receivedAt).toISOString(), telemetry: snapshot.telemetry, imu_source: snapshot.imu_source, imu_received_at: snapshot.imu_received_at }); if (history.length > cfg.historySize) history.shift(); publish();
           } else if (msg.type === 'ack') {
             validateAck(msg); const r = commandLog.get(msg.id);
             if (msg.session_id !== device.sessionId) throw new Error('Wrong acknowledgement session');
@@ -216,6 +287,8 @@ function createServer(options = {}) {
     await survey.close();
     for (const ws of wss.clients) ws.terminate(); wss.close(); for (const socket of sockets) socket.destroy(); await new Promise(resolve => server.close(resolve));
   };
+  server.robloxImuToken = cfg.robloxImuToken;
+  server.tunnelSecret = tunnelSecret;
   return server;
 }
 if (require.main === module) {
@@ -228,7 +301,8 @@ if (require.main === module) {
   let stopping = false;
   server.listen(port, host, () => {
     console.log(`Manta Ray dashboard: http://${host}:${port} (simulator ${process.env.ALLOW_SIMULATOR === '1' ? 'enabled' : 'disabled'})`);
-    tunnelStartup = require('./tunnel').startTunnel(port, { backendHost: host }).then(value => {
+    if (process.env.ALLOW_SIMULATOR === '1') console.log(`Roblox IMU token (keep private): ${server.robloxImuToken}`);
+    tunnelStartup = require('./tunnel').startTunnel(port, { backendHost: host, controlToken: process.env.CONTROL_TOKEN, tunnelSecret: server.tunnelSecret }).then(value => {
       tunnel = value;
     }).catch(error => {
       console.error(`Tunnel unavailable: ${error.message}. The local dashboard remains available.`);

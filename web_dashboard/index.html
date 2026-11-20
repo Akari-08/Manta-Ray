@@ -71,7 +71,7 @@
           <div class="panel-heading"><span class="panel-index">03</span><div><h2 id="motion-title">Motion model</h2><p>IMU <span class="tiny-separator">/</span> FIN COMMANDS</p></div></div>
           <div class="panel-actions"><span class="panel-badge" id="model-badge">AWAITING IMU</span><button class="move-panel" data-direction="-1" aria-label="Move motion model earlier">&#8592;</button><button class="move-panel" data-direction="1" aria-label="Move motion model later">&#8594;</button><span class="drag-handle" aria-hidden="true">&#8942;&#8942;</span></div>
         </div>
-        <div class="motion-body"><div id="fish-stage" class="fish-stage" role="img" aria-label="Three-dimensional fish model with a sensor acceleration arrow"></div><p id="model-readout" role="status">Waiting for fresh telemetry.</p><p class="panel-disclaimer">Fish is illustrative. Roll/pitch are gravity estimates; relative gyro yaw drifts. Sensor axes assume aligned mounting. Arrow includes gravity. Flapping animation is an estimate, not measured fin positions.</p></div>
+        <div class="motion-body"><div id="fish-stage" class="fish-stage" role="img" aria-label="Three-dimensional fish model with a sensor acceleration arrow"></div><p id="model-readout" role="status">Waiting for fresh telemetry.</p><p class="panel-disclaimer">Fish is illustrative. Hardware roll/pitch are gravity estimates and relative gyro yaw drifts; Roblox attitude is simulated. Sensor axes assume aligned mounting. Arrow includes gravity. Flapping animation is an estimate, not measured fin positions.</p></div>
       </section>
 
       <section class="panel map-panel" data-panel="map" aria-labelledby="map-title">
@@ -79,7 +79,19 @@
           <div class="panel-heading"><span class="panel-index">04</span><div><h2 id="map-title">Map</h2><p>LOCATION</p></div></div>
           <div class="panel-actions"><button class="move-panel" data-direction="-1" aria-label="Move location map earlier">&#8592;</button><button class="move-panel" data-direction="1" aria-label="Move location map later">&#8594;</button><span class="drag-handle" aria-hidden="true">&#8942;&#8942;</span></div>
         </div>
-        <div class="map-body"><div class="map-stage"><div id="location-map" aria-label="Location map"></div><div id="map-placeholder" class="map-placeholder" role="status">Waiting for location permission…</div></div></div>
+        <div class="map-body">
+          <div class="map-stage"><div id="location-map" aria-label="Interactive survey map"></div><div id="map-placeholder" class="map-placeholder" role="status">Loading map…</div></div>
+          <p class="mission-note">Cyan marker: simulated Roblox manta position. Green marker: browser location. Position is not GPS.</p>
+          <p class="mission-note">Click the map to plot a boundary. Example sensor settings are for simulation only. Confirm the area, then run <code>startpath</code> in the localhost command log. Anyone with the tunnel link can read the resulting coordinates.</p>
+          <div class="mission-actions"><button id="mission-undo" type="button">UNDO POINT</button><button id="mission-clear" type="button">CLEAR</button><button id="mission-confirm" type="button">CONFIRM AREA</button></div>
+          <div class="mission-settings">
+            <label>Depth · m<input id="mission-depth" type="number" min="0.01" max="100" step="any" value="1"></label>
+            <label>Sensor FOV · °<input id="mission-fov" type="number" min="1" max="179" step="any" value="60"></label>
+            <label>Overlap · 0–1<input id="mission-overlap" type="number" min="0" max="0.99" step="0.01" value="0.2"></label>
+          </div>
+          <p id="mission-status" class="mission-note" role="status" aria-live="polite">Plot at least three points.</p>
+          <details><summary>Preview waypoint coordinates</summary><pre id="mission-waypoints">No preview generated.</pre></details>
+        </div>
       </section>
 
       <section class="panel console-panel" data-panel="console" aria-labelledby="console-title">
@@ -88,7 +100,7 @@
           <div class="panel-actions"><span class="panel-badge" id="control-status">CONTROLS LOCKED</span><button class="move-panel" data-direction="-1" aria-label="Move Vehicle interface earlier">&#8592;</button><button class="move-panel" data-direction="1" aria-label="Move Vehicle interface later">&#8594;</button><span class="drag-handle" aria-hidden="true">&#8942;&#8942;</span></div>
         </div>
         <div class="interface-body">
-          <div class="interface-sidebar"><span class="overline">LOCAL CONTROL ACCESS</span><p>Enable the heartbeat before commanding motion. Keep this tab visible.</p><label for="control-token">Control token</label><input id="control-token" type="password" autocomplete="off" placeholder="From your local .env"><button id="enable-control" type="button">ENABLE CONTROLS</button><button id="disable-control" type="button" disabled>RELEASE CONTROLS</button><div class="interface-note" id="disconnect-policy">Bench policy: stop flapping on heartbeat timeout. Hold syringe target. Software stop does not cut servo power.</div></div>
+          <div class="interface-sidebar"><span class="overline">CONTROL ACCESS</span><p>Enter the control token for tunnel writes. Remote vehicle controls are simulator-only. Enable the heartbeat before commanding motion and keep this tab visible.</p><label for="control-token">Control token</label><input id="control-token" type="password" autocomplete="off" placeholder="From your local .env"><button id="enable-control" type="button">ENABLE CONTROLS</button><button id="disable-control" type="button" disabled>RELEASE CONTROLS</button><div class="interface-note" id="disconnect-policy">Bench policy: stop flapping on heartbeat timeout. Hold syringe target. Software stop does not cut servo power.</div></div>
           <div class="interface-main">
             <div class="tabs" role="tablist" aria-label="Vehicle interface"><button id="terminal-tab" class="tab active" role="tab" aria-selected="true" aria-controls="terminal-view" tabindex="0">Controls <span>01</span></button><button id="config-tab" class="tab" role="tab" aria-selected="false" aria-controls="config-view" tabindex="-1">Command log <span>02</span></button><span class="tab-status">COMMANDS EXPIRE</span></div>
             <div id="terminal-view" class="tab-view" role="tabpanel" aria-labelledby="terminal-tab">
@@ -96,10 +108,11 @@
               <form id="fin-form" class="controls-form"><label>Amplitude · deg<input id="amplitude" type="number" min="0" max="45" step="1" value="20" required></label><label>Cycle rate · Hz<input id="cycle-rate" type="number" min="0.1" max="2" step="0.1" value="0.5" required></label><label>Centre · deg<input id="centre" type="number" min="90" max="180" step="1" value="135" required></label><button data-motion type="submit" disabled>APPLY FIN SETTINGS</button></form>
               <div class="motion-buttons"><button data-motion id="start-flapping" type="button" disabled>START FLAPPING</button><button id="stop-flapping" type="button" disabled>STOP FLAPPING</button></div>
               <form id="syringe-form" class="controls-form"><label>Syringe target · deg<input id="syringe-target" type="number" min="0" max="180" step="1" value="90" required></label><button id="set-syringe" type="submit" disabled>SET SYRINGE</button><span id="syringe-reason">Disabled: model unconfirmed</span></form>
+              <form id="syringe-volume-form" class="controls-form"><label>Simulated air volume · mL<input id="syringe-volume" type="number" min="0" max="20" step="any" value="10" required></label><button id="set-syringe-volume" type="submit" disabled>SET SIMULATED VOLUME</button><span id="simulated-depth">Simulator only · depth unavailable</span></form>
               <p id="command-feedback" role="status">Controls locked. No movement requested.</p>
             </div>
             <div id="config-view" class="tab-view" role="tabpanel" aria-labelledby="config-tab" hidden>
-              <p class="terminal-help" id="terminal-help">Commands: <code>setfin &lt;amplitude|cr|center&gt; &lt;value&gt;</code> · <code>setsyringe &lt;degrees&gt;</code> · <code>startflap</code> · <code>stopflap</code>. Enable controls and keep this tab visible. Software stop does not cut power.</p>
+              <p class="terminal-help" id="terminal-help">Commands: <code>setfin &lt;amplitude|cr|center&gt; &lt;value&gt;</code> · <code>setsyringe &lt;0–20 mL&gt;</code> (simulation only) · <code>startflap</code> · <code>stopflap</code> · <code>startpath</code> (local simulation preview only). Enable controls for vehicle commands. Software stop does not cut power.</p>
               <div class="terminal-output" id="terminal-output" aria-live="polite"><p>No commands sent this session.</p></div>
               <form id="command-line-form" class="terminal-input"><label for="command-line">&gt;</label><input id="command-line" type="text" maxlength="200" autocomplete="off" spellcheck="false" aria-label="Vehicle command" aria-describedby="terminal-help" placeholder="e.g. setfin amplitude 20"><button type="submit">SEND &#8594;</button></form>
             </div>

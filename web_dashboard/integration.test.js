@@ -4,7 +4,7 @@ const assert = require('node:assert/strict');
 const { randomUUID } = require('node:crypto');
 const { WebSocket } = require('ws');
 const { createServer, cameraURLs, localIP } = require('./server');
-const { startSimulator, makeTelemetry } = require('./simulator');
+const { startSimulator, makeTelemetry, stepBuoyancy } = require('./simulator');
 const { validateTelemetry, validateCommand, validateAck } = require('./protocol');
 const DEVICE = 'test-device-token-000000000000', CONTROL = 'test-control-token-00000000000';
 const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
@@ -33,6 +33,53 @@ test('all command limits and ACK statuses reject malformed values', () => {
   for (const c of [command('set_fin', { amplitude_deg: 46, cycle_hz: 1, centre_deg: 135 }), command('set_fin', { amplitude_deg: 20, cycle_hz: 0, centre_deg: 135 }), command('set_fin', { amplitude_deg: 20, cycle_hz: 1, centre_deg: 181 }), command('set_syringe', { target_deg: 181 }), command('start', { target_deg: 90 }), command('surface'), { ...command(), ttl_ms: 2001 }, { ...command(), args: [] }, { ...command(), id: 'x' }]) assert.throws(() => validateCommand(c));
   const ack = { schema_version: 1, type: 'ack', session_id: randomUUID(), id: randomUUID(), status: 'applied', reason: null };
   validateAck(ack); assert.throws(() => validateAck({ ...ack, status: 'success' })); assert.throws(() => validateAck({ ...ack, status: 'rejected' }));
+});
+test('buoyancy settles near both extremes and acceleration changes during motion', () => {
+  const state = { volume: 0, depth: 0.5, velocity: 0, acceleration: 0 };
+  stepBuoyancy(state, 0.02);
+  assert.ok(state.acceleration > 0 && state.depth > 0.5);
+  for (let i = 0; i < 3000; i++) stepBuoyancy(state, 0.02);
+  assert.ok(state.depth > 0.94 && Math.abs(state.velocity) < 0.001);
+  state.volume = 20;
+  stepBuoyancy(state, 0.02);
+  assert.ok(state.acceleration < 0);
+  for (let i = 0; i < 3000; i++) stepBuoyancy(state, 0.02);
+  assert.ok(state.depth < 0.06 && Math.abs(state.velocity) < 0.001);
+  assert.throws(() => validateCommand(command('set_syringe_volume', { volume_ml: 20.01 })));
+  const hardware = makeTelemetry(); hardware.source = 'hardware';
+  assert.throws(() => validateTelemetry(hardware), /simulation fields/);
+});
+test('simulated syringe volume uses authorization, heartbeat, acknowledgement and telemetry', async t => {
+  const f = await fixture(t);
+  const c = command('set_syringe_volume', { volume_ml: 0 });
+  assert.equal((await f.post('/api/commands', c, 'wrong')).status, 401);
+  assert.equal((await f.post('/api/commands', c)).status, 409);
+  await f.post('/api/control/heartbeat', {}); await delay(70);
+  assert.equal((await f.post('/api/commands', c)).status, 202);
+  const result = await until(async () => {
+    const r = await fetch(`${f.base}/api/commands/${c.id}`, { headers: { Authorization: `Bearer ${CONTROL}` } }).then(r => r.json());
+    return r.status !== 'pending' && r;
+  });
+  assert.equal(result.status, 'applied');
+  const telemetry = await until(async () => { const s = await f.get('/api/state'); return s.telemetry.simulation.syringe_volume_ml === 0 && s.telemetry.simulation.depth_m > 0.5 && s.telemetry; });
+  assert.ok(telemetry.imu.acceleration.value[2] < 9.7);
+});
+test('backend never forwards simulated volume commands to hardware', async t => {
+  const server = createServer({ deviceToken: DEVICE, controlToken: CONTROL, allowSimulator: true, heartbeatMs: 50, leaseMs: 1000 });
+  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve)); t.after(() => server.shutdown());
+  const base = `http://127.0.0.1:${server.address().port}`;
+  const ws = new WebSocket(base.replace('http', 'ws') + '/ws/device'); t.after(() => ws.terminate());
+  await new Promise(resolve => ws.once('open', resolve));
+  ws.send(JSON.stringify({ type: 'hello', schema_version: 1, robot_id: 'manta-01', source: 'hardware', token: DEVICE }));
+  await new Promise(resolve => ws.once('message', resolve));
+  const telemetry = makeTelemetry(); telemetry.source = 'hardware'; delete telemetry.simulation;
+  ws.send(JSON.stringify(telemetry));
+  await until(async () => !(await fetch(base + '/api/state').then(r => r.json())).stale);
+  const headers = { 'Content-Type': 'application/json', Authorization: `Bearer ${CONTROL}` };
+  await fetch(base + '/api/control/heartbeat', { method: 'POST', headers, body: '{}' });
+  const response = await fetch(base + '/api/commands', { method: 'POST', headers, body: JSON.stringify(command('set_syringe_volume', { volume_ml: 10 })) });
+  assert.equal(response.status, 409);
+  assert.match((await response.json()).error, /simulation-only/);
 });
 test('camera URLs cannot redirect the backend off the device or to arbitrary paths', () => {
   const t = makeTelemetry(); t.camera.available = true; t.camera.stream_url = 'http://127.0.0.1:8081/stream'; t.camera.snapshot_url = 'http://127.0.0.1:8080/capture'; cameraURLs(t, '::ffff:127.0.0.1');

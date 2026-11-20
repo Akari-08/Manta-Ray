@@ -126,8 +126,8 @@ tabs.forEach((tab, index) => {
 const client = new LiveClient();
 const $ = id => document.getElementById(id);
 const fishView = createFishView($('fish-stage'), $('model-badge'), $('model-readout'));
-createLocationMap();
-let recording = false, transport = 'connecting', lastState = null, samples = [], lastSeq = null, lastUptime = null, cameraBusy = false, frameUrl = null, pending = false, finSync = null, localLogId = 0;
+const missionMap = createLocationMap(() => client.token || $('control-token').value.trim());
+let recording = false, transport = 'connecting', lastState = null, samples = [], lastSeq = null, lastUptime = null, cameraBusy = false, frameUrl = null, lastRayFrameId = null, pending = false, finSync = null, localLogId = 0;
 let demoAccessAttempted = false;
 
 async function authorizeLocalDemo(state) {
@@ -172,6 +172,7 @@ function renderControls() {
   document.querySelectorAll('[data-motion]').forEach(button => { button.disabled = !enabled; });
   $('stop-flapping').disabled = !fresh || !client.token || pending;
   $('set-syringe').disabled = !enabled || lastState.telemetry?.control.actuator_state === 'disabled';
+  $('set-syringe-volume').disabled = !enabled || lastState.telemetry?.source !== 'simulator' || !lastState.telemetry?.simulation;
   $('enable-control').disabled = !fresh || client.active;
   $('disable-control').disabled = !client.active;
   $('control-status').textContent = client.active ? 'HEARTBEAT ACTIVE' : 'CONTROLS LOCKED';
@@ -182,13 +183,14 @@ function renderStatus() {
   document.body.classList.toggle('simulation', !!simulated);
   $('connection-status').textContent = transport !== 'connected' ? `BACKEND ${transport.toUpperCase()}` : `ROBOT ${s?.connection.toUpperCase()}`;
   const warnings = [];
-  if (simulated) warnings.push('SIMULATION — synthetic motion and test-card camera. No hardware measurements.');
+  if (simulated) warnings.push('SIMULATION — synthetic motion and camera imagery. No hardware measurements.');
   if (transport !== 'connected') warnings.push('Backend unavailable. Displayed values may be old. Controls locked.');
   else if (s?.stale) warnings.push('Telemetry stale or robot disconnected. Displayed values are historical. Controls locked.');
   $('data-warning').textContent = warnings.join(' ') || 'Hardware telemetry connected. Positions below are commanded, without servo feedback.';
   $('data-warning').classList.toggle('healthy', !warnings.length);
   $('last-update').textContent = s?.received_at ? `${new Date(s.received_at).toLocaleTimeString()} · ${((s.age_ms || 0) / 1000).toFixed(1)} s old` : 'No telemetry received';
   fishView.update(s, transport === 'connected');
+  missionMap.updateState(s, transport === 'connected');
   renderControls();
 }
 function chart() {
@@ -220,33 +222,37 @@ function render(s) {
   $('operating-mode').textContent = t.mode.toUpperCase();
   for (const [id, reading] of [['acceleration', t.imu.acceleration], ['gyro', t.imu.angular_velocity], ['temperature', t.water.temperature], ['tds-raw', t.water.tds_raw], ['tds-estimate', t.water.tds_estimate]]) $(id).textContent = format(reading);
   $('attitude').textContent = `${format(t.imu.roll_estimate)} / ${format(t.imu.pitch_estimate)}`;
-  $('imu-calibration').textContent = t.imu.calibration_state;
+  $('imu-calibration').textContent = `${t.imu.calibration_state}${s.imu_source === 'roblox' ? ' · ROBLOX IMU' : ''}`;
   $('faults').replaceChildren(...(t.faults.length ? t.faults : ['No reported device faults']).map(f => { const li = document.createElement('li'); li.textContent = f; return li; }));
   const c = t.control;
   $('commanded-state').textContent = `${c.flapping ? 'FLAPPING' : 'STOPPED'} · amplitude ${c.amplitude_deg}° · ${c.cycle_hz} Hz · centre ${c.centre_deg}°. Commanded left: ${format(c.left_command)}; right: ${format(c.right_command)}; syringe: ${format(c.syringe_command)}.`;
   $('syringe-reason').textContent = `Actuator: ${c.actuator_state}${c.syringe_command.reason ? ` — ${c.syringe_command.reason}` : ''}`;
+  $('simulated-depth').textContent = t.source === 'simulator' && t.simulation ? `SIMULATED · ${t.simulation.syringe_volume_ml.toFixed(1)} mL · depth ${t.simulation.depth_m.toFixed(2)} m (npm model)` : 'Simulator only · depth unavailable';
   $('disconnect-policy').textContent = `${c.disconnect_policy === 'stop' ? `Stop flapping after ${c.heartbeat_timeout_ms / 1000} s without an active control heartbeat` : 'Autonomous policy: continue local flapping after disconnect'}. Hold last fin/syringe targets; no automatic syringe move. Software stop does not cut power. Outputs ${c.outputs_enabled ? 'enabled' : 'disabled in firmware'}.`;
   const result = s.cv.result;
   $('cv-result').textContent = result ? `${s.cv.stale ? 'STALE · ' : ''}${result.frame.source === 'simulator' ? 'SIMULATION · ' : ''}${result.vegetation_cover_pct.toFixed(1)}% · confidence ${result.confidence.toFixed(2)} · ${result.method} · calibration ${result.calibration_id} · frame uptime ${result.frame.captured_uptime_ms} ms` : `Unavailable: ${s.cv.reason}`;
   if (lastUptime !== null && t.uptime_ms < lastUptime) { samples = []; lastSeq = null; }
   if (lastSeq !== t.seq) { samples.push({ received_at: s.received_at, telemetry: t }); samples = samples.slice(-600); lastSeq = t.seq; lastUptime = t.uptime_ms; chart(); }
-  if (!recording && (s.stale || transport !== 'connected' || !t.camera.available)) {
+  if (!recording && (s.stale || transport !== 'connected' || (!t.camera.available && !s.roblox_camera))) {
     $('live-camera').hidden = true; $('video-placeholder').hidden = false; $('camera-status').textContent = 'UNAVAILABLE'; $('camera-reason').textContent = s.stale ? 'Telemetry stale; camera hidden.' : t.camera.reason;
   }
 }
 async function frame() {
-  if (recording || cameraBusy || transport !== 'connected' || lastState?.stale || !lastState?.telemetry?.camera.available || document.hidden) return;
+  const ray = lastState?.telemetry?.source === 'simulator' ? lastState?.roblox_camera : null;
+  if (recording || cameraBusy || transport !== 'connected' || lastState?.stale || (!ray && !lastState?.telemetry?.camera.available) || document.hidden) return;
+  if (ray && ray.frame_id === lastRayFrameId && frameUrl && !$('live-camera').hidden) return;
   cameraBusy = true;
   try {
-    const response = await fetch('/api/camera/frame', { cache: 'no-store', signal: AbortSignal.timeout(3500) });
+    const response = await fetch(ray ? '/api/roblox/camera/frame' : '/api/camera/frame', { cache: 'no-store', signal: AbortSignal.timeout(3500) });
     if (!response.ok) throw new Error('Camera frame unavailable; retrying');
-    const metadata = JSON.parse(response.headers.get('x-frame-metadata')), blob = await response.blob();
-    if (recording || lastState.stale) return;
+    const metadata = ray || JSON.parse(response.headers.get('x-frame-metadata')), blob = await response.blob();
+    if (recording || lastState.stale || (ray && lastState.roblox_camera?.frame_id !== ray.frame_id) || (!ray && lastState.roblox_camera)) return;
     if (frameUrl) URL.revokeObjectURL(frameUrl); frameUrl = URL.createObjectURL(blob);
+    lastRayFrameId = ray?.frame_id || null;
     $('live-camera').src = frameUrl; $('live-camera').hidden = false; $('video-placeholder').hidden = true;
-    $('camera-status').textContent = metadata.source === 'simulator' ? 'SIMULATED CAMERA' : 'LIVE JPEG';
-    $('video-source').textContent = `${metadata.source === 'simulator' ? 'Simulated test card' : 'ESP32 camera'} · sampled up to 2 fps`;
-    $('frame-info').textContent = `Image uptime ${metadata.captured_uptime_ms} ms · received ${new Date(metadata.received_at).toLocaleTimeString()} · calibration ${metadata.calibration_id || 'unavailable'}`;
+    $('camera-status').textContent = ray ? 'SIMULATED RAYCAST' : metadata.source === 'simulator' ? 'SIMULATED CAMERA' : 'LIVE JPEG';
+    $('video-source').textContent = ray ? 'Roblox simulated raycast · 128 × 72 · about every 1 s' : `${metadata.source === 'simulator' ? 'Simulated test card' : 'ESP32 camera'} · sampled up to 2 fps`;
+    $('frame-info').textContent = ray ? `Synthetic first-person scene · received ${new Date(metadata.received_at).toLocaleTimeString()}` : `Image uptime ${metadata.captured_uptime_ms} ms · received ${new Date(metadata.received_at).toLocaleTimeString()} · calibration ${metadata.calibration_id || 'unavailable'}`;
   } catch (error) { $('live-camera').hidden = true; $('video-placeholder').hidden = false; $('camera-reason').textContent = error.message; $('camera-status').textContent = 'CAMERA RETRYING'; }
   finally { cameraBusy = false; }
 }
@@ -277,17 +283,22 @@ $('start-flapping').addEventListener('click', () => command('start'));
 $('stop-flapping').addEventListener('click', () => command('stop'));
 $('fin-form').addEventListener('submit', event => { event.preventDefault(); command('set_fin', { amplitude_deg: Number($('amplitude').value), cycle_hz: Number($('cycle-rate').value), centre_deg: Number($('centre').value) }); });
 $('syringe-form').addEventListener('submit', event => { event.preventDefault(); command('set_syringe', { target_deg: Number($('syringe-target').value) }); });
-$('command-line-form').addEventListener('submit', event => {
+$('syringe-volume-form').addEventListener('submit', event => { event.preventDefault(); command('set_syringe_volume', { volume_ml: Number($('syringe-volume').value) }); });
+$('command-line-form').addEventListener('submit', async event => {
   event.preventDefault();
   const input = $('command-line'), line = input.value.trim();
   if (!line) return;
   input.value = '';
   try {
     const { name, params } = parseCommandLine(line);
+    if (name === 'startpath') {
+      const plan = await missionMap.startPath();
+      logCommand({ id: `local-${++localLogId}`, action: name, label: line, status: 'preview created', reason: `${plan.waypoints.length} waypoints; simulation only` });
+      return;
+    }
     const fresh = transport === 'connected' && lastState && !lastState.stale;
     if (!fresh || !client.token) throw new Error('Fresh telemetry and a control token are required');
     if (name !== 'stopflap' && (!client.active || !lastState.telemetry?.control.outputs_enabled)) throw new Error('Enable controls and configured servo outputs first');
-    if (name === 'setsyringe' && lastState.telemetry.control.actuator_state === 'disabled') throw new Error('Syringe model, limits and output not configured');
     if (name === 'setfin' && finSync) throw new Error('Waiting for telemetry to confirm the last applied fin settings');
     const { action, args } = buildCommand(name, params, lastState);
     command(action, args, line);

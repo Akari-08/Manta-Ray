@@ -3,21 +3,24 @@ const scalar = reading => Number.isFinite(reading?.value) ? reading.value : null
 
 // Relative Z rotation is only a short-term gyro integral, not compass heading.
 export function createMotionTracker() {
-  let lastSeq = null, lastUptime = null, yaw = 0;
+  let lastSeq = null, lastUptime = null, lastSource = null, yaw = 0;
   return {
     update(state, connected) {
       if (!connected || !state || state.stale || !state.telemetry) {
-        lastSeq = lastUptime = null; yaw = 0;
+        lastSeq = lastUptime = lastSource = null; yaw = 0;
         return { live: false };
       }
       const t = state.telemetry, gyro = vector(t.imu.angular_velocity);
+      const source = state.imu_source || t.source;
+      if (source !== lastSource) { lastSeq = lastUptime = null; yaw = 0; lastSource = source; }
       if (t.seq !== lastSeq) {
         const dt = lastUptime === null ? 0 : (t.uptime_ms - lastUptime) / 1000;
         if (!gyro || dt < 0 || dt > 0.5) yaw = 0;
         else if (dt > 0) yaw = ((yaw + gyro[2] * dt + 180) % 360 + 360) % 360 - 180;
         lastSeq = t.seq; lastUptime = t.uptime_ms;
       }
-      return { live: true, roll: scalar(t.imu.roll_estimate), pitch: scalar(t.imu.pitch_estimate), yaw: gyro ? yaw : null, acceleration: vector(t.imu.acceleration), gyro, control: t.control, simulated: t.source === 'simulator' };
+      const robloxYaw = state.imu_source === 'roblox' && Number.isFinite(state.roblox_yaw_deg) ? state.roblox_yaw_deg : null;
+      return { live: true, roll: scalar(t.imu.roll_estimate), pitch: scalar(t.imu.pitch_estimate), yaw: robloxYaw ?? (gyro ? yaw : null), robloxImu: robloxYaw !== null, acceleration: vector(t.imu.acceleration), gyro, control: t.control, simulated: t.source === 'simulator' };
     },
   };
 }

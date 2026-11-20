@@ -40,7 +40,7 @@ export function createFishView(stage, badge, readout) {
     badge.textContent = current.roll === null || current.pitch === null ? 'IMU UNAVAILABLE' : current.simulated ? 'SIMULATED' : 'LIVE ESTIMATE';
     const fmt = n => n === null ? 'unavailable' : `${n.toFixed(1)}°`;
     const mag = current.acceleration ? Math.hypot(...current.acceleration) : null;
-    readout.textContent = `Roll ${fmt(current.roll)} · pitch ${fmt(current.pitch)} · relative Z gyro rotation ${fmt(current.yaw)} (drifts) · acceleration ${mag === null ? 'unavailable' : `${mag.toFixed(2)} m/s² including gravity`} · fins ${finAngles(current.control, 0).mode}.`;
+    readout.textContent = `Roll ${fmt(current.roll)} · pitch ${fmt(current.pitch)} · ${current.robloxImu ? 'Roblox simulated yaw' : 'relative Z gyro rotation'} ${fmt(current.yaw)}${current.robloxImu ? '' : ' (drifts)'} · acceleration ${mag === null ? 'unavailable' : `${mag.toFixed(2)} m/s² including gravity`} · fins ${finAngles(current.control, 0).mode}.`;
     if (current.roll !== null && current.pitch !== null) fish.rotation.set(THREE.MathUtils.degToRad(current.roll), THREE.MathUtils.degToRad(current.yaw || 0), THREE.MathUtils.degToRad(current.pitch), 'YZX');
     else fish.rotation.set(0, 0, 0);
     if (current.acceleration && mag > 0.001) {

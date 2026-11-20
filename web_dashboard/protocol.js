@@ -1,6 +1,6 @@
 'use strict';
 const VERSION = 1;
-const LIMITS = Object.freeze({ amplitude_deg: [0, 45], cycle_hz: [0.1, 2], centre_deg: [90, 180], syringe_deg: [0, 180] });
+const LIMITS = Object.freeze({ amplitude_deg: [0, 45], cycle_hz: [0.1, 2], centre_deg: [90, 180], syringe_deg: [0, 180], syringe_ml: [0, 20] });
 const fail = message => { throw new Error(message); };
 function keys(v, required, name) {
   if (!v || typeof v !== 'object' || Array.isArray(v) || Object.keys(v).some(k => !required.includes(k)) || required.some(k => !Object.hasOwn(v, k))) fail(`${name}: unexpected or missing fields`);
@@ -23,11 +23,17 @@ function reading(v, unit, name, min, max, vector = false) {
 const missing = (unit, reason) => ({ value: null, unit, reason });
 const measured = (value, unit) => ({ value, unit, reason: null });
 function validateTelemetry(t) {
-  keys(t, ['schema_version', 'type', 'robot_id', 'firmware_version', 'seq', 'uptime_ms', 'source', 'device_time', 'wifi', 'imu', 'water', 'control', 'camera', 'faults', 'mode'], 'telemetry');
+  keys(t, ['schema_version', 'type', 'robot_id', 'firmware_version', 'seq', 'uptime_ms', 'source', 'device_time', 'wifi', 'imu', 'water', 'control', 'camera', 'faults', 'mode', ...(Object.hasOwn(t, 'simulation') ? ['simulation'] : [])], 'telemetry');
   if (t.schema_version !== VERSION || t.type !== 'telemetry') fail('unsupported telemetry schema');
   text(t.robot_id, 'robot_id', 48); if (!/^[a-zA-Z0-9_-]+$/.test(t.robot_id)) fail('invalid robot_id');
   text(t.firmware_version, 'firmware_version', 48); integer(t.seq, 'seq'); integer(t.uptime_ms, 'uptime_ms');
   choice(t.source, ['hardware', 'simulator'], 'source'); choice(t.mode, ['bench', 'autonomous'], 'mode');
+  if (Object.hasOwn(t, 'simulation')) {
+    if (t.source !== 'simulator') fail('simulation fields require simulator source');
+    keys(t.simulation, ['syringe_volume_ml', 'depth_m'], 'simulation');
+    number(t.simulation.syringe_volume_ml, 'syringe_volume_ml', 0, 20);
+    number(t.simulation.depth_m, 'depth_m', 0, 100);
+  }
   reading(t.device_time, 'unix_ms', 'device_time', 0, Number.MAX_SAFE_INTEGER);
   keys(t.wifi, ['rssi', 'reconnects'], 'wifi'); reading(t.wifi.rssi, 'dBm', 'wifi.rssi', -127, 0); integer(t.wifi.reconnects, 'reconnects');
   keys(t.imu, ['acceleration', 'angular_velocity', 'roll_estimate', 'pitch_estimate', 'calibration_state'], 'imu');
@@ -54,9 +60,9 @@ function validateCommand(c) {
   keys(c, ['schema_version', 'id', 'action', 'args', 'ttl_ms'], 'command');
   if (c.schema_version !== VERSION) fail('unsupported command schema');
   if (typeof c.id !== 'string' || !/^[a-zA-Z0-9_-]{8,64}$/.test(c.id)) fail('invalid command id');
-  integer(c.ttl_ms, 'ttl_ms', 200, 2000); choice(c.action, ['start', 'stop', 'set_fin', 'set_syringe'], 'action');
-  const names = c.action === 'set_fin' ? ['amplitude_deg', 'cycle_hz', 'centre_deg'] : c.action === 'set_syringe' ? ['target_deg'] : [];
-  keys(c.args, names, 'args'); for (const k of names) number(c.args[k], k, ...(k === 'target_deg' ? LIMITS.syringe_deg : LIMITS[k]));
+  integer(c.ttl_ms, 'ttl_ms', 200, 2000); choice(c.action, ['start', 'stop', 'set_fin', 'set_syringe', 'set_syringe_volume'], 'action');
+  const names = c.action === 'set_fin' ? ['amplitude_deg', 'cycle_hz', 'centre_deg'] : c.action === 'set_syringe' ? ['target_deg'] : c.action === 'set_syringe_volume' ? ['volume_ml'] : [];
+  keys(c.args, names, 'args'); for (const k of names) number(c.args[k], k, ...(k === 'target_deg' ? LIMITS.syringe_deg : k === 'volume_ml' ? LIMITS.syringe_ml : LIMITS[k]));
   return c;
 }
 function validateAck(a) {

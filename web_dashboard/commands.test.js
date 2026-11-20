@@ -3,7 +3,7 @@ const assert = require('node:assert/strict');
 const { LIMITS, validateCommand } = require('./protocol');
 
 const modulePromise = import('./commands.mjs');
-const state = () => ({ stale: false, limits: LIMITS, telemetry: { control: { amplitude_deg: 20, cycle_hz: 0.5, centre_deg: 135 } } });
+const state = () => ({ stale: false, limits: LIMITS, telemetry: { source: 'simulator', control: { amplitude_deg: 20, cycle_hz: 0.5, centre_deg: 135 } } });
 
 test('CLI and structured commands share the same translation and protocol contract', async () => {
   const { parseCommandLine, buildCommand } = await modulePromise;
@@ -12,7 +12,7 @@ test('CLI and structured commands share the same translation and protocol contra
     ['SETFIN cr 1.25', { action: 'set_fin', args: { amplitude_deg: 20, cycle_hz: 1.25, centre_deg: 135 } }],
     ['setfin center 150', { action: 'set_fin', args: { amplitude_deg: 20, cycle_hz: 0.5, centre_deg: 150 } }],
     ['setfin centre 90', { action: 'set_fin', args: { amplitude_deg: 20, cycle_hz: 0.5, centre_deg: 90 } }],
-    ['setsyringe 180', { action: 'set_syringe', args: { target_deg: 180 } }],
+    ['setsyringe 20', { action: 'set_syringe_volume', args: { volume_ml: 20 } }],
     ['startflap', { action: 'start', args: {} }],
     ['stopflap', { action: 'stop', args: {} }],
   ]) {
@@ -26,8 +26,10 @@ test('CLI and structured commands share the same translation and protocol contra
 
 test('rejects malformed input, invalid ranges and unsafe fin snapshots', async () => {
   const { parseCommandLine, buildCommand } = await modulePromise;
+  assert.deepEqual(parseCommandLine('startpath'), { name: 'startpath', params: {} });
+  assert.throws(() => buildCommand('startpath', {}, state()), /local simulation preview/);
   for (const line of ['bogus', 'setfin', 'startflap 1', 'setsyringe', 'setfin cr NaN', 'setsyringe Infinity', 'setfin cr 0x1', 'setsyringe 12foo']) assert.throws(() => parseCommandLine(line));
-  for (const line of ['setfin unknown 1', 'setfin amplitude 46', 'setfin cr 0', 'setfin center 181', 'setsyringe -1', 'setsyringe 181']) {
+  for (const line of ['setfin unknown 1', 'setfin amplitude 46', 'setfin cr 0', 'setfin center 181', 'setsyringe -1', 'setsyringe 21']) {
     const { name, params } = parseCommandLine(line);
     assert.throws(() => buildCommand(name, params, state()));
   }
@@ -35,6 +37,7 @@ test('rejects malformed input, invalid ranges and unsafe fin snapshots', async (
   assert.throws(() => buildCommand('setfin', { parameter: 'amplitude', value: 1 }, { ...state(), telemetry: { control: { amplitude_deg: 20 } } }), /cycle_hz/);
   assert.throws(() => buildCommand('setfin', { parameter: 'cr', value: '1' }, state()));
   assert.throws(() => buildCommand('startflap', { extra: 1 }, state()));
+  assert.throws(() => buildCommand('setsyringe', { volume_ml: 10 }, { ...state(), telemetry: { ...state().telemetry, source: 'hardware' } }), /simulation-only/);
 });
 
 test('fin settings require newer matching fresh telemetry, allowing firmware float rounding', async () => {

@@ -38,3 +38,15 @@ test('fin model animates confirmed flapping, even without individual angles', as
   c.left_command = reading(150); c.right_command = reading(120);
   assert.deepEqual(finAngles(c, 0.25), { left: 15, right: -15, mode: 'stopped (holding commanded angles)' });
 });
+
+test('Roblox yaw is shown directly and fallback starts a fresh gyro integral', async () => {
+  const { createMotionTracker } = await modulePromise;
+  const tracker = createMotionTracker();
+  const telemetry = makeTelemetry({ uptime: 1000, seq: 1 });
+  telemetry.imu.angular_velocity = reading([0, 0, 20]);
+  assert.equal(tracker.update({ stale: false, telemetry, imu_source: 'roblox', roblox_yaw_deg: 75 }, true).yaw, 75);
+  telemetry.seq++; telemetry.uptime_ms += 100;
+  const fallback = tracker.update({ stale: false, telemetry, imu_source: 'simulator' }, true);
+  assert.equal(fallback.yaw, 0);
+  assert.equal(fallback.robloxImu, false);
+});

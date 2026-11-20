@@ -32,7 +32,9 @@ For a manually managed server, copy `web_dashboard/.env.example` to `.env` only 
 
 Install [Cloudflare's `cloudflared` client](https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/downloads/) and ensure `cloudflared` is on PATH. With the `.env` and npm dependencies set up as above, `npm.cmd start` starts the dashboard and prints a temporary `https://...trycloudflare.com` link. It changes on restart; Ctrl+C stops the tunnel and dashboard. If the tunnel cannot start, the local dashboard stays available. Quick Tunnels depend on Cloudflare and are intended for testing, not a reliable production service. `npm.cmd run demo` remains local-only.
 
-The public link is **read-only**: commands, control leases, device connections, demo credentials and writes are blocked, even with a token. Anyone with the link can see telemetry, survey data and camera images, so don't use it for sensitive data. Local control still works as before. The link is not an authentication mechanism; for restricted or production access, use an authenticated gateway rather than a Quick Tunnel. If a device reports that the hostname does not exist, its DNS resolver may be blocking `trycloudflare.com`; try a different network or a public DNS resolver.
+The public link allows selected dashboard writes when you enter the **CONTROL_TOKEN** from `web_dashboard/.env` in the control panel. Enable controls to start the heartbeat before commanding the simulator. Remote vehicle commands and heartbeats are accepted only with fresh simulator telemetry; hardware cannot be controlled through the tunnel. Mission previews and survey writes also require the control token. The Roblox IMU and raycast uploads use their separate temporary token. Device connections and automatic demo credentials remain blocked.
+
+Anyone with the link can see telemetry, survey data and camera images, including the Roblox raycast view. Anyone with the control token can operate the simulator and submit supported writes; keep both link and token private. The link alone does not authenticate viewers. Quick Tunnel is for testing, not production; use a proper authenticated gateway for restricted access. If a device reports that the hostname does not exist, its DNS resolver may be blocking `trycloudflare.com`.
 
 To read telemetry from Roblox, enable **Allow HTTP Requests** in Studio's Game Settings and use a server-side Script. Replace the URL after each dashboard restart:
 
@@ -50,6 +52,26 @@ end
 ```
 
 Roblox `HttpService` requests data from the API; it does not embed or render the dashboard website. The Roblox server needs internet access, and the computer running the dashboard must remain on.
+
+### Simulation survey preview
+
+In the **localhost** dashboard, pan and zoom the interactive map, click at least three boundary vertices, and select **Confirm area**. Adjust the example depth, sensor FOV and overlap values, then enter `startpath` in **Vehicle interface → Command log**. Swaths appear on the map and their ordered endpoints appear under **Preview waypoint coordinates**. Undo or clear points before confirming a replacement area.
+
+This is a local planar, FOV-spaced **simulation preview**, not Fields2Cover. The dashboard connects swaths inside the boundary but does not model turn radius, obstacle avoidance, shoreline clearance or guaranteed coverage, and must not be used to navigate hardware. Inputs are illustrative, not sensor calibration. The dashboard supports simple non-self-intersecting boundaries up to 64 points, 2 km in either direction and 512 route waypoints.
+
+The latest preview remains in memory until the dashboard restarts. Its `/api/mission` data, including geographic coordinates, is readable by **anyone with the public tunnel link**; creating one through the tunnel requires the control token. Roblox polls it when AceticOrb is present, draws a neon boundary and red route centered in the water part, and teleports `MantaView` to the first waypoint. Enable flapping to follow the route; stop flapping to pause. East is +X, north is −Z, at 2048 studs per 200 m (10.24 studs/m). `MantaView` is 0.23 m long along its forward axis; 0.30 m/s is 3.072 studs/s. Roblox rejects a survey that does not fit inside the 2048-stud water plane.
+
+During play, Roblox generates temporary rocks and coral above the baseplate. A simulated forward sonar detects these generated objects; a bounded local planner attempts to detour inside the survey boundary and rejoin the route, or stops if it cannot find a safe path. The ray slows near waypoints and coasts along the next checked segment as its heading eases over three seconds. This is an approximate visual simulation, not a physical turn-radius model, validated collision avoidance or control for hardware. The orange temporary line shows the simulated detour; the dashboard's red route remains the original preview.
+
+Press **C** for first/third-person view, **H** to hide or show the link/token panel, and **U** to hide or show the survey and detour lines. First person applies local underwater fog; third person stays above the water surface.
+
+With `ALLOW_SIMULATOR=1`, `npm start` prints a new **Roblox IMU token** on every restart. Keep it private. In Roblox, AceticOrb enters both the tunnel URL and this token in the dashboard-link panel and presses Apply. Roblox adds gentle simulated roll and pitch, with stronger rocking during flapping, and derives simulated acceleration and angular velocity from mesh motion about four times per second; the dashboard labels their source `ROBLOX IMU`. The Roblox HUD displays those synthetic IMU values even without an upload token. The third-person camera holds a level horizon so the rocking is visible. If the player leaves or uploads stop, the existing simulator IMU resumes after 2.5 seconds. A real hardware device is never overridden. These values are synthetic estimates, not measured heading or an underwater dynamics model.
+
+The map's cyan marker shows the Roblox ray's simulated position on the matching active preview; the green marker is the browser's location. The ray marker uses the same authenticated Roblox IMU connection, disappears when its position goes stale or a different mission is shown, and is not a GPS reading. Position and the geographic preview are visible to anyone with the public tunnel link.
+
+While the Roblox player and fresh npm simulator telemetry are present, the same Roblox token enables a **SIMULATED RAYCAST** image in the camera panel. Approximately once per second the server samples 128 × 72 rays from the manta's first-person viewpoint, writes them into an EditableImage, and sends the raw pixels to the dashboard, which keeps only the latest PNG in memory. Rendering and network latency may reduce the rate. Rays are spread across frames to reduce movement impact. It approximates ground, obstacle colors, light and underwater haze; it is not a screenshot and does not reproduce textures, transparent materials, reflections or shadows. When the feed expires, the existing camera source resumes. The image never overrides a hardware camera or enters the hardware CV capture pipeline. Quick Tunnel viewers can see it.
+
+With fresh npm simulator telemetry and the control heartbeat enabled, use the simulated air volume control or `setsyringe 0` through `setsyringe 20` (mL). Zero settles near the bottom, 20 near the surface; intermediate settings settle in between. The npm simulator's depth and Roblox's water-space depth are independent synthetic models, not hardware measurements, and the Roblox setting is polled approximately every three seconds. Vertical motion contributes to the simulated accelerometer. The separate degree-based hardware form retains its original calibration guard; volume commands never go to hardware.
 
 ## Recorded surveys
 
@@ -181,9 +203,9 @@ Control uses distinct device/control secrets of at least 24 characters. Renew th
 {"schema_version":1,"id":"unique-command-uuid","action":"set_fin","args":{"amplitude_deg":20,"cycle_hz":0.5,"centre_deg":135},"ttl_ms":1500}
 ```
 
-Actions are `set_fin`, `set_syringe`, `start` and `stop`. Only one command may be pending. HTTP 202 means sent, not applied. Device outcomes are `applied`, `rejected` or `expired`; disconnect/timeout leaves physical outcome unknown. No automatic motion retries or reconnect replay occur. Applied means controller acceptance, not measured motion. Stop needs authentication, fresh telemetry and valid expiry, but no active operator lease.
+Actions are `set_fin`, `set_syringe`, `start` and `stop`, plus simulator-only `set_syringe_volume`. Only one command may be pending. HTTP 202 means sent, not applied. Device outcomes are `applied`, `rejected` or `expired`; disconnect/timeout leaves physical outcome unknown. No automatic motion retries or reconnect replay occur. Applied means controller acceptance, not measured motion. Stop needs authentication, fresh telemetry and valid expiry, but no active operator lease.
 
-The dashboard command log supports `setfin amplitude 20`, `setfin cr 0.5`, `setfin center 135`, `setsyringe 90`, `startflap` and `stopflap`. Partial fin updates preserve other fresh settings and wait for reflected telemetry before the next change. `commands.mjs` exposes a parser/builder for adapters, not an MCP server or authorization layer.
+The dashboard command log supports `setfin amplitude 20`, `setfin cr 0.5`, `setfin center 135`, `setsyringe 10` (simulation mL), `startflap` and `stopflap`. Partial fin updates preserve other fresh settings and wait for reflected telemetry before the next change. `commands.mjs` exposes a parser/builder for adapters, not an MCP server or authorization layer.
 
 ### Camera, position and surfacing
 
@@ -214,7 +236,7 @@ arduino-cli compile --fqbn esp32:esp32:esp32wrover firmware/manta_ray
 
 Copy `secrets.example.h` and `local_config.example.h` to their ignored local equivalents in `firmware/manta_ray/`. Inspect wiring, calibration and actual serial port before uploading. In Arduino IDE select ESP32 Wrover Module, PSRAM enabled and default 4 MB partitions.
 
-For hardware, stop simulation, set `ALLOW_SIMULATOR=0`, bind `HOST` to the computer's specific private Wi-Fi IPv4, and use that address as firmware `BACKEND_HOST`. Match port, robot ID and device token; connect both devices to the same 2.4 GHz network. If needed, restrict the Windows firewall allowance to the Private profile/local subnet. The direct HTTP/WS protocol is for a trusted isolated LAN; it has bearer authentication but no transport encryption. The optional public Quick Tunnel exposes only the read-only gateway described above. No firewall rules are created automatically.
+For hardware, stop simulation, set `ALLOW_SIMULATOR=0`, bind `HOST` to the computer's specific private Wi-Fi IPv4, and use that address as firmware `BACKEND_HOST`. Match port, robot ID and device token; connect both devices to the same 2.4 GHz network. If needed, restrict the Windows firewall allowance to the Private profile/local subnet. The direct HTTP/WS protocol is for a trusted isolated LAN; it has bearer authentication but no transport encryption. The public gateway blocks hardware robot control and rejects Roblox IMU uploads when hardware is connected. No firewall rules are created automatically.
 
 ### Pins and calibration
 
