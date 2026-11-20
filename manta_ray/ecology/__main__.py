@@ -17,6 +17,7 @@ import time
 from .metrics import FRAME_BYTES, WIDTH, analyze, numeric_fields, write_mask, write_overlay
 from .water import WaterData, finite_number
 from .assessment import assess, catalog
+from .image_survey import export_frame, finish_export
 
 FIELDS = (
     "timestamp_s", "status", "candidate_green_cover_pct", "vegetation_cover_pct",
@@ -61,12 +62,12 @@ def run(args):
         assessment_request = json.loads(args.assessment_input.read_text(encoding="utf-8-sig"))
         if not isinstance(assessment_request, dict):
             raise ValueError("Assessment input must be a JSON object")
-    assessment_request.setdefault("method", args.assessment_method or "camera_tds")
+    assessment_request.setdefault("method", args.assessment_method or "benthic_point_cover")
     if args.assessment_method:
         assessment_request["method"] = args.assessment_method
     if args.include_simulated_assessment:
         assessment_request["include_simulated"] = True
-    if assessment_request["method"] not in {method["id"] for method in catalog()}:
+    if assessment_request["method"] not in {method["id"] for method in catalog(include_legacy=True)}:
         raise ValueError("Unknown assessment method")
     ffmpeg = shutil.which(args.ffmpeg)
     ffprobe = shutil.which(args.ffprobe)
@@ -135,6 +136,7 @@ def run(args):
         comparisons = Counter()
         matched_readings = {}
         covers = []
+        review_frames = []
         count = 0
         with (
             tempfile.TemporaryFile() as errors,
@@ -153,6 +155,9 @@ def run(args):
                         args.green_excess, args.min_saturation,
                     )
                     statuses[metrics.status] += 1
+                    if args.export_review:
+                        review_frames.append(export_frame(result, frame, mask, timestamp, count, source_hash,
+                                                          metrics.status, args.review_points, args.review_seed))
                     overlay = ""
                     mask_path = f"masks/frame_{count:06d}.pgm"
                     write_mask(result / mask_path, mask)
@@ -221,13 +226,13 @@ def run(args):
             "aquatic_life": {
                 "status": "not_assessed", "detections": None, "unique_individuals": None,
                 "identified_taxa": None,
-                "reason": "Organism detection, tracking and species identification are not implemented or validated.",
+                "reason": "Automatic organism detection is unvalidated. Reviewed video counts are available through the video_maxn assessment method.",
             },
             "assessment": {
                 "lake_health": "insufficient_evidence",
                 "trophic_state": "not_assessed",
-                "missing_indicators": ["total_phosphorus", "chlorophyll_a", "Secchi_depth",
-                                       "dissolved_oxygen_profile", "species_and_reference_site_data"],
+                "missing_indicators": ["reviewed_vegetation_or_habitat_labels", "repeatable_spatial_sampling",
+                                       "ecological_reference_and_taxonomic_context"],
                 "interpretation": [
                     "Candidate green cover is an image-domain screening metric requiring independent labels.",
                     "Brightness, contrast, clipping and gradient describe imagery quality.",
@@ -241,6 +246,8 @@ def run(args):
         for name, path in (("tds_csv", args.tds_csv), ("tds_reference", args.tds_reference)):
             if path:
                 summary["source"][name] = {"name": path.name, "sha256": file_hash(path)}
+        if args.export_review:
+            summary["review_workflow"] = finish_export(result, review_frames, args.review_seed)
         with (result / "survey.csv").open(encoding="utf-8", newline="") as stream:
             observations = list(csv.DictReader(stream))
         ecological_assessment = assess(assessment_request, summary, observations)
@@ -283,7 +290,10 @@ def main(argv=None):
     parser.add_argument("--confirm-bottom-roi", action="store_true", help="Record operator confirmation that ROI shows lakebed")
     parser.add_argument("--video-source", choices=("unknown", "stock", "survey", "synthetic"), default="unknown")
     parser.add_argument("--site-id", default="")
-    parser.add_argument("--assessment-method", choices=("camera_tds", "carlson_tsi", "ccme_wqi"))
+    parser.add_argument("--assessment-method", choices=tuple(item["id"] for item in catalog(include_legacy=True)))
+    parser.add_argument("--export-review", action="store_true", help="Export raw review frames, random points and a blank annotation CSV")
+    parser.add_argument("--review-points", type=int, default=50, help="Random eligible pixels per frame, 1..1000")
+    parser.add_argument("--review-seed", type=int, default=42)
     parser.add_argument("--assessment-input", type=Path, help="JSON measurements and assessment settings")
     parser.add_argument("--include-simulated-assessment", action="store_true", help="Enable explicitly labeled scenario calculations")
     tds = parser.add_mutually_exclusive_group()
@@ -315,6 +325,8 @@ def main(argv=None):
             raise ValueError("--simulated-tds-seed must be between 0 and 4294967295")
         if args.overlay_every < 1 or args.max_samples < 1:
             raise ValueError("--overlay-every and --max-samples must be positive")
+        if not 1 <= args.review_points <= 1000 or not 0 <= args.review_seed <= 4294967295:
+            raise ValueError("Review points must be 1..1000 and review seed 0..4294967295")
         if not 0 <= args.min_saturation <= 1 or not 1 <= args.green_excess <= 255:
             raise ValueError("Saturation must be in [0,1] and green excess in [1,255]")
         if not all(0 <= value <= 255 for value in (args.min_brightness, args.min_contrast)):

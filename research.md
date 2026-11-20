@@ -1,135 +1,143 @@
-# Research, methods and evidence
+# Camera-led ecological survey research
 
-Reviewed 19 November 2026. [Project overview](README.md) · [Operation and input formats](GUIDE.md)
+The research question is: **Can a small flapping-fin robot collect repeatable images that measure aquatic vegetation, habitat and visible aquatic life?** The present sensor set is cameras, a TDS probe and an MPU. The analysis should be designed around those observations. Additional instruments are optional proposals, listed separately below.
 
-This file brings together the scientific basis, calculation choices, scholarly sources and validation evidence. The supplied stock videos have no independent plant labels, verified site identity, water chemistry or known ecological condition. They support pipeline testing and image observations; their actual lake health remains undetermined.
+[Project overview](README.md) · [Run the pipeline](GUIDE.md)
 
-## What lake researchers assess
+## How researchers assess aquatic ecosystems
 
-Lake condition includes biology, chemistry, physical habitat and suitability for particular uses. The EPA National Lakes Assessment considers biological integrity, trophic state, recreation and stressors through multiple indicators, including nutrients, chlorophyll, dissolved oxygen and biological communities. A camera and TDS probe provide only part of that evidence. [EPA National Lakes Assessment](https://www.epa.gov/national-aquatic-resource-surveys/what-national-lakes-assessment)
+Researchers define the habitat, ecological question and sampling design before selecting measurements. Typical questions concern changes in plant distribution, community composition, habitat structure, animal occurrence or water conditions relative to a reference. A naturally vegetated shallow lake can be in good ecological condition. High plant cover alone is not evidence of pollution, and clear-looking water does not establish ecological quality.
 
-For eutrophication, Quebec's monitoring program combines total phosphorus, chlorophyll a and Secchi transparency; dissolved organic carbon helps explain water color. Littoral aquatic plants provide complementary information. Repeated sampling across seasons and years is necessary to interpret trends. This supports collecting contextual observations rather than assigning one universal health score from appearance. [Quebec monitoring methods](https://www.environnement.gouv.qc.ca/eau/rsvl/methodes-en.htm)
+For freshwater macrophytes, Wisconsin DNR uses a spatial sampling grid, records plant occurrence and abundance, verifies species, and retains raw site records. Its rake-based point-intercept survey is a useful example of representative sampling, **not a protocol that camera pixels can reproduce directly**. Image cover, rake fullness and frequency of occurrence measure different things. [Wisconsin DNR aquatic plant research and standard protocols](https://dnr.wisconsin.gov/topic/lakes/plants/research)
 
-The project's immediate research question is whether moving-camera imagery can measure visible-bottom vegetation cover accurately. Tank quadrats with known artificial cover provide a controlled first reference. Field surveys need representative transects/quadrats, independent plant identification and a documented quality-assurance plan. [EPA, *Volunteer Lake Monitoring: A Methods Manual*, EPA 440/4-91-002, chapters 3–5](https://www.epa.gov/sites/production/files/2015-06/documents/lakevolman.pdf)
+Underwater photographs and video offer a complementary observation method. A photoquadrat defines a photographed patch; a video transect records a sequence along a route. Researchers identify organisms or substrate within those images, calculate cover or counts, compare observers and repeat the survey. EPA's lake-monitoring manual discusses plant-bed mapping, planned sampling and specimen identification. [EPA, *Volunteer Lake Monitoring: A Methods Manual*, chapters 3–5](https://www.epa.gov/sites/production/files/2015-06/documents/lakevolman.pdf)
+
+Ecological interpretation then compares like habitats, seasons and survey methods, ideally with a suitable reference site or earlier surveys. Plant identity matters: native vegetation, invasive macrophytes, filamentous algae and floating debris are different ecological observations. The robot should produce traceable measurements that support that interpretation, rather than create a universal health score. The broader EPA National Lakes Assessment uses multiple biological, physical and chemical indicators; this project observes a narrower subset. [EPA assessment scope](https://www.epa.gov/national-aquatic-resource-surveys/what-national-lakes-assessment)
 
 ## Supported observations
 
-| Observation | Definition | Interpretation |
+| Measurement | How to obtain it with the current equipment | Appropriate ecological use |
 | --- | --- | --- |
-| Candidate green cover | Green-rule pixels / eligible pixels in the selected image region × 100 | Calculated from decoded video pixels. Water color and green objects can trigger it; brown plants can be missed. |
-| Vegetation cover | Plant area relative to visible bottom, supported by independent labels | Currently unavailable for the stock clips. Image fraction needs suitable geometry before becoming bottom-area fraction. |
-| Usable-view fraction | Samples passing configured quality gates / all sampled views × 100 | Brightness/contrast screening only; it does not prove lakebed visibility or accurate classification. |
-| Image diagnostics | Median luma, P90–P10 contrast, dark/clipped fractions and adjacent-pixel gradient | Recording diagnostics, not calibrated turbidity, Secchi depth or chlorophyll. |
-| Measured TDS | Time-aligned dissolved-solids estimate with site, method and calibration metadata | Supports contextual monitoring, not identification of individual nutrients, pathogens or oxygen. |
-| Simulated TDS | Seeded hypothetical chemistry profile | Demonstration input; no evidence about the filmed water. |
-| Aquatic life | Detection, individual counts and identified taxa | Not assessed: no validated organism detector, tracker or classifier is implemented. |
+| Projected macrophyte cover | Classify random points or pixels within a confirmed visible-bottom region | Compare vegetation extent between comparable quadrats/transects; validate against independent labels |
+| Visible algal/substrate composition | Distinguish confidently identifiable filamentous algae, sediment, rock, detritus and other benthos | Describe habitat and visible change; retain unknown labels rather than infer chemistry |
+| Aquatic-life observations | Review simultaneous visible counts per taxon in video; later use a validated detector to assist | Occurrence and relative video counts; not total fish population or biomass |
+| Recording quality | Image brightness/contrast/blur plus synchronized camera-motion context | Identify unscorable views and improve acquisition |
+| TDS | Calibrated probe readings aligned with the recording | Describe ionic/dissolved-solids context or departures from a justified local baseline |
+| MPU motion | Acceleration and angular velocity, with clock and mounting calibration | Document motion/tilt and investigate blur; not GPS, water depth or ecological chemistry |
 
-The present detector uses RGB green-excess and saturation rules, not a trained vegetation model. Transparent letterbox pixels are excluded. The operator can declare a bottom region, but that declaration is not independently verified. A rejected image stays missing rather than becoming zero vegetation. Adjacent views may repeat the same patch: a clip median describes sampled views, not lakewide cover or surveyed square meters.
-
-Dissolved ions influence electrical conductivity, but their combined response does not identify phosphorus concentration. [USGS, *Conductivity and Water*](https://www.usgs.gov/water-science-school/science/conductivity-electrical-conductance-and-water) Conductivity depends on temperature and geology; conversion to TDS is empirical. Compare calibrated readings with an appropriate site/depth/season baseline and retain the sensor's conversion convention. The project's lake-baseline screen is an engineering choice requiring local validation; EPA's cited baseline guidance concerns streams. [EPA conductivity monitoring guidance, section 5.9](https://archive.epa.gov/water/archive/web/html/vms59.html)
-
-There is no universal project TDS threshold for a healthy lake. ppm approximates mg/L only for dilute freshwater; retain native units. Camera color and TDS cannot substitute for laboratory nutrients, dissolved oxygen or an actual Secchi measurement. Multispectral retrieval is a future calibration study, not an implemented capability. As an example of calibrated optical retrieval, Fuller et al. fitted regional satellite models against field observations; those relationships do not transfer automatically to underwater stock video. [Fuller, Aichele & Minnerick (2004)](https://doi.org/10.3133/sir20045086)
+The MVP should prioritize macrophyte cover and substrate composition. Aquatic-life surveys are a separate observation task: the downward-facing vegetation camera may miss fish outside its field of view. If multiple cameras are used, record each camera's role and calibration; two cameras do not automatically form a calibrated stereo system.
 
 ## Assessment methods
 
-### Carlson Trophic State Index
+### Reviewed image-point cover
 
-Carlson's original index describes trophic state using indicators related to algal biomass. It does not certify general ecological condition or safety for every use. [Carlson (1977), *A trophic state index for lakes*, **Limnology and Oceanography 22**(2), 361–369, DOI: 10.4319/lo.1977.22.2.0361](https://aslopubs.onlinelibrary.wiley.com/doi/10.4319/lo.1977.22.2.0361)
+Random image-point annotation is an established way to estimate benthic composition from photographs or video frames. CPCe overlays random points and classifies the material beneath them; CoralNet research evaluates manual and automated annotation. Their original applications are predominantly marine benthos. **Using the same measurement principle for freshwater vegetation is a project adaptation that needs freshwater labels and validation**, not a claim of compliance with a published lake-health index. [Kohler & Gill, 2006](https://doi.org/10.1016/j.cageo.2005.11.009), [Beijbom et al., 2015](https://doi.org/10.1371/journal.pone.0130312)
 
-The engine uses the published NALMS equations below, with chlorophyll a and total phosphorus in µg/L and Secchi depth in meters:
-
-```text
-TSI(CHL) = 9.81 ln(CHL) + 30.6
-TSI(TP)  = 14.42 ln(TP) + 4.15
-TSI(SD)  = 60 - 14.41 ln(SD)
-```
-
-Chlorophyll has priority, then phosphorus, then transparency. Different components remain separate; the engine averages per-sample TSI within the chosen parameter. Application categories are <40 oligotrophic, 40–<50 mesotrophic, 50–<70 eutrophic and ≥70 hypereutrophic. Scores are not clipped to 0–100. Non-algal turbidity, colored water and macrophyte-dominated systems complicate interpretation. [NALMS, *Trophic State Equations*](https://www.nalms.org/secchidipin/monitoring-methods/trophic-state-equations/)
-
-Only positive quantified concentrations/depths are eligible. RGB appearance and TDS are never converted into these inputs. The catalog's 20 µg/L chlorophyll example yields TSI ≈59.99 and is explicitly simulated.
-
-### CCME Water Quality Index
-
-CCME WQI evaluates repeated measurements against objectives chosen for the site and intended water use. Its published calculation is:
+The implemented review workflow samples eligible image pixels uniformly without replacement. Its 50-point default is a configurable engineering choice, not a universally sufficient sample size. A reviewer identifies the class directly beneath each point, records a sampling unit and confirms bottom visibility. Use coarse defensible classes first: macrophyte, filamentous algae, bare sediment, rock, detritus, other benthos, unknown and not bottom. Do not assign a species or algal category when image resolution is insufficient.
 
 ```text
-F1 = 100 × failing parameters / tested parameters
-F2 = 100 × failing tests / all tests
-maximum excursion = test / objective - 1
-minimum excursion = objective / test - 1
-nse = sum(excursions) / all tests
-F3 = nse / (0.01 × nse + 0.01)
-WQI = 100 - sqrt(F1² + F2² + F3²) / 1.732
+eligible bottom points = sampled points - not-bottom points
+classified bottom points = eligible bottom points - unknown points
+class cover (%) = 100 × class hits / classified bottom points
+plant lower bound (%) = 100 × plant hits / eligible bottom points
+plant upper bound (%) = 100 × (plant hits + unknown hits) / eligible bottom points
 ```
 
-Passing tests have zero excursion. Published categories are ≥95 excellent, ≥80 good, ≥65 fair, ≥45 marginal, otherwise poor. The 2017 manual recommends 8–20 relevant parameters and cautions against fewer than four parameters and four visits annually; timing, relevance and suitable objectives still matter. The engine reports the earlier count minimum separately from the preferred parameter count and labels limited datasets exploratory. [CCME (2017), *Water Quality Index User's Manual*, equations 1–6 and application guidance](https://ccme.ca/en/res/wqimanualen.pdf)
+The reported point estimate is conditional on classification. The unknown bounds show how ambiguity could affect the estimate; they are not confidence intervals. An all-unknown frame has missing classified cover and bounds of 0–100%, rather than zero plants. Excluded views and their reasons remain in the audit. Reports retain frame results, then average equally within declared sampling units and across units. Without independent spatial replicates, the software does not manufacture an inferential confidence interval.
 
-Implementation choices are explicit: range objectives count a measurement once; a failed zero denominator uses the unbounded-excursion limit F3=100; tiny roundoff excursions outside the final 0–100 range are bounded. Unit/chemical identity must agree with the objective. The current interface accepts nonnegative numeric values only; negative temperatures and censored laboratory strings need an appropriate external workflow. Submitted sampling-period metadata does not filter records or prove annual representativeness.
+### Aquatic-life video counts
 
-The reference test reproduces the manual's Devon 1997 example: 103 tests, 10 parameters, four failed tests across two parameters, score approximately 88 (good). This validates the calculation, not the quality of any project lake. The all-passing simulated catalog example is also exploratory.
+MaxN is the maximum number of individuals of a taxon simultaneously visible in a recording. It avoids summing repeated appearances across frames. Freshwater research uses this metric, but shows that a detector's image-level accuracy does not guarantee accurate ecological counts: Jansen et al. found substantially poorer agreement for derived MaxN than training detection metrics suggested. This supports validating the final ecological output as well as the detector. [Jansen et al., 2024](https://doi.org/10.1071/MF23166)
 
-### Camera and TDS screening
+The backend calculates MaxN for recordings declared stationary and fully reviewed over a stated interval. With a moving camera or incomplete review it reports only the maximum visible count in the reviewed frames. Record taxon labels, explicit zero counts, reviewer, camera mode, start/end time and source hash. Compare recordings only with appropriate control of effort, visibility, camera geometry and habitat. These counts are not unique individuals, density, a census or a whole-lake population estimate. A coarse label such as unidentified fish is not a species.
 
-`camera_tds` is a project protocol, not a published lake-health index. It summarizes image quality, candidate-green distribution and source-separated TDS counts/median/range. `monitor`, `review` and `data_gap` describe screening actions, with no numeric health score. A measured departure from a compatible supplied site range prompts investigation; overall lake condition remains insufficient evidence.
+### TDS and image-quality context
 
-The input contract distinguishes measured and simulated values, requires measurement method/sample identity/time, rejects duplicate identities and preserves exclusions. Simulation is excluded by default; explicit opt-in labels the report **SIMULATION SCENARIO**, including mixed inputs. Audit output retains equations, intermediate results, engine version, assumptions, references and a canonical SHA-256 of the complete input envelope. These are software provenance measures; they cannot verify an operator's calibration claims or objective selection.
+TDS accompanies the biological observations and does not change their cover/count calculations. Conductivity responds to dissolved ions collectively and depends on temperature and water composition. A conductivity-derived ppm estimate requires documented calibration, conversion factor and compensation convention; it cannot resolve phosphorus, toxins or oxygen. [USGS conductivity explanation](https://www.usgs.gov/water-science-school/science/conductivity-electrical-conductance-and-water), [EPA conductivity methods](https://archive.epa.gov/water/archive/web/html/vms59.html)
 
-### Simulated TDS model
+Use a measured local baseline with comparable site, season, depth and method when interpreting change. There is no universal project TDS threshold for healthy water. Simulated TDS is only a reproducible software scenario: the current seeded smooth profile has a default 150 ppm baseline and ±10 ppm bounds. It is unrelated to the stock video's real chemistry. Reports keep simulated context separate from reviewed biological observations.
 
-The shared generator `smooth_harmonic_tds_v1` uses seeded phases with periods 48, 19 and 7 seconds and weights 0.55, 0.30 and 0.15. Values stay within baseline ± variation, bounded below by zero. Defaults are baseline 150 ppm, variation 10 ppm and seed 42. A timestamp/seed gives the same result regardless of query order; zero variation deliberately gives a constant profile.
+## How CV produces ecological measurements
 
-Both video processing and assessment use that function, with generated values retained separately in the audit. Explicit generation supersedes old simulated rows and preserves measured readings. The profile provides smooth, reproducible demonstration data. Its parameters have no hydrological or chemical calibration and cannot reveal the stock footage's chemistry.
+**Segmentation** assigns a class to each pixel; it supports cover because it describes area. **Point classification** assigns classes only at sampled points, reducing annotation effort. **Object detection** locates animals and supports frame counts. **Tracking** links detections over time, but identities can fail under occlusion and camera motion. These outputs answer different questions and need different reference labels.
 
-## Reconstruction research
+A practical vegetation model would learn macrophyte, algae, substrate and unknown/obscured classes from researcher-reviewed images. An encoder extracts visual features; a decoder reconstructs a spatial label map. U-Net illustrates this encoder/decoder design, while SUIM provides underwater segmentation research and broad object categories. Neither paper supplies a validated freshwater-lake model for this robot. SUIM's marine imagery and broad classes require a domain-transfer evaluation. [Ronneberger et al., 2015](https://arxiv.org/abs/1505.04597), [Islam et al., 2020](https://arxiv.org/abs/2004.01241)
 
-COLMAP's incremental structure-from-motion pipeline estimates camera geometry and sparse 3D points from matching observations across viewpoints. [Schönberger & Frahm (2016), *Structure-from-Motion Revisited*, CVPR, 4104–4113](https://openaccess.thecvf.com/content_cvpr_2016/html/Schonberger_Structure-From-Motion_Revisited_CVPR_2016_paper.html) The project runs feature extraction, sequential matching, mapping, analysis and PLY export through the [official COLMAP CLI](https://colmap.github.io/cli.html).
+Training must include brown plants, green water, suspended material, partial occlusion, lighting changes and empty-bottom negatives. Point labels can train a point classifier; they do not automatically supply a dense ground-truth mask. Dense segmentation needs suitable pixel annotations or a separately validated weak-supervision approach. Use a confidence/abstention policy selected on held-out data, and send uncertain cases to a reviewer.
 
-Texture, overlapping views and camera translation are capture requirements to investigate. Extraction contrast/gradient proxies cannot verify adequate overlap. Underwater calibration, refraction, moving vegetation and a geometric reference require separate validation. A sparse model has arbitrary scale until a known reference establishes scale; internal reprojection error is not an independent physical-accuracy measurement.
+The current RGB green-excess rule is a development baseline and optional annotation hint. It is neither a semantic vegetation classifier nor a measure of ecological condition. Its suggestions never become accepted labels automatically. Beijbom et al. demonstrate the value of human/automation comparisons and clear class definitions; their reported accuracy cannot be copied to this project. [Annotation study](https://doi.org/10.1371/journal.pone.0130312)
+
+## Full data pipeline
+
+```mermaid
+flowchart TD
+    A[Survey question and spatial sampling plan] --> B[Camera recording + TDS + MPU logs]
+    B --> C[Archive raw inputs, clocks, calibration and hashes]
+    C --> D[Sample frames; record quality and camera motion]
+    D --> E[Confirm bottom region and label reference data]
+    E --> F[Reviewed photoquadrat points and video counts]
+    E --> G[Train and validate CV on independent sessions]
+    G --> H[CV proposals with uncertainty and reviewer checks]
+    H --> F
+    F --> I[Cover, habitat composition and relative animal counts]
+    C --> J[Source-separated TDS context]
+    I --> K[Compare matched sampling units and reference conditions]
+    J --> K
+    K --> L[Dashboard, downloadable records and calculation audit]
+    C --> M[COLMAP geometry branch]
+```
+
+1. **Design the survey.** Define a target habitat, ecological question, classes and units of replication. Stratify shallow habitats when needed. Select transects/quadrats before seeing convenient footage. Record the intended camera height, speed, orientation, lighting, season and revisit procedure. Stock clips are development inputs with unknown design, not representative field samples.
+2. **Collect and archive.** Preserve original videos, acquisition settings, mission/session/camera IDs, TDS readings, MPU logs, calibration records, operator notes and source/license information. Hash raw inputs; keep processing derivatives separate. Do not overwrite source images with enhanced versions.
+3. **Align clocks.** Record video presentation time and sensor/device uptime separately, measure their offset/drift, and document matching tolerance. Keep unmatched readings missing. The current backend joins TDS by nearest clip-relative timestamp; live MPU telemetry exists, but an offline camera/MPU synchronization adapter is still needed before claiming motion-aligned frame quality.
+4. **Sample and check quality.** Use a declared temporal/spatial sampling rule and preserve rejected views. Brightness/contrast gates are recording checks. Calibrated camera/MPU mounting and synchronized angular velocity can help assess motion, but cannot prove the bottom is visible. White balancing or enhancement may aid interpretation; retain its parameters and validate that it preserves measurement performance.
+5. **Define the denominator.** Confirm visible bottom/canopy, exclude vehicle/water-column regions, and retain ambiguous areas. Use calibrated imaging geometry or reference quadrats for area. The MPU alone cannot supply camera-to-bottom distance. Repeated frames can show the same patch.
+6. **Annotate and review.** Export source-linked frames and fixed random points; retain labels, reviewer, class dictionary and unknowns. Double-annotate a subset, inspect disagreement and adjudicate it. Randomize review order where appropriate to reduce expectation effects. NOAA's image-analysis guidance illustrates an operational annotation/QA workflow; freshwater classes and acceptance criteria must be defined for this study. [NOAA CoralNet SOP, 2022](https://repository.library.noaa.gov/view/noaa/42469)
+7. **Develop CV.** Split by independent recording session/site before tuning, freeze a held-out set, train the selected classifier/segmenter, and version weights, code, parameters and training-data hashes. Compare with simple baselines. Measure domain shift across sites, cameras and seasons. No training runtime, weights or new datasets have been installed for the present implementation.
+8. **Validate ecological outputs.** Compare predicted cover with independent point/mask references using MAE/bias in percentage points and per-class precision/recall/IoU. Evaluate animal detection and the derived video counts against reviewed video, not only detection mAP. Report unknown/rejection rates and results by independent session. Set acceptance criteria before the final evaluation.
+9. **Aggregate and interpret.** Retain per-frame and per-transect results. Account for overlap and footprint/area weights before making lakewide estimates. Use repeated reference surveys to evaluate change. Statistical intervals must respect the independent sampling unit, not treat pixels or neighboring frames as independent lake replicates. Species, season and reference conditions determine ecological meaning.
+10. **Publish an inspectable record.** Export observations, raw input IDs/hashes, annotations, source labels, exclusions, methods and versioned calculations. The dashboard presents the evidence and missing information. Simulation stays labeled; a calculation audit does not prove field accuracy.
+
+Freshwater research on submerged vegetation combined underwater-video reference imagery with expert interpretation and spectral measurements. It supports site-specific validation and the distinction between broad cover and species identification, rather than treating green appearance as a species label. [*Multi-Scale Spectral Separability of Submerged Aquatic Vegetation Species in a Freshwater Ecosystem* (2021)](https://doi.org/10.3389/fenvs.2021.760372)
+
+## COLMAP's role
+
+Reconstruction is a geometry branch of the same archived recording. It can help inspect spatial structure and, with validated calibration, scale and registration, support repeat surveys. It does not establish plant taxonomy, biomass or chemistry. SfM estimates camera/point geometry from repeated feature observations; underwater refraction, moving leaves, feature-poor surfaces and camera motion need attention. [Schönberger & Frahm, 2016](https://openaccess.thecvf.com/content_cvpr_2016/html/Schonberger_Structure-From-Motion_Revisited_CVPR_2016_paper.html)
+
+Both supplied clips have already produced real sparse COLMAP models: 29/29 registered views with 14,273 points, and 25/25 views with 8,923 points. These establish pipeline operation and internal registration, not independent physical accuracy. Known reference dimensions and an underwater camera/housing calibration are needed before reporting metric area or volume. The point cloud and image-observation records should retain their common source hash.
+
+## Optional sensor additions
+
+**These are separate proposals, not assumed onboard equipment.** The current baseline remains cameras + TDS + MPU. Select parts only after checking the actual enclosure CAD, connectors, cable bends, power, mass/buoyancy and free pins/bus addresses. No fit claim can be verified from the project description alone.
+
+| Optional addition | Research benefit | Fit and integration decision |
+| --- | --- | --- |
+| Small water-temperature probe | Supports documented TDS temperature compensation and thermal context | A DS18B20-based probe is a plausible compact candidate: one supplier specifies a 6 mm × 30 mm sensing tube. Cable/penetrator space and a free digital pin still need an audit; that example is not pressure-rated for long-term immersion. |
+| Compact water-pressure/depth sensor | Adds water depth for mission and sampling context | Bar02-type sensors use I²C and an M10 bulkhead interface. Check the complete internal body, flat sealing area, cable and bus layout. Depth below the surface still does not measure distance to the bottom. |
+| Camera scale/calibration target | Establishes footprint or reference size without another electronic sensor | A known-size tank quadrat is the first option. Verify visibility and viewing geometry; this is preferable to assuming size from the MPU. |
+| Multispectral camera | Potentially improves discrimination of specific plant groups after calibration | A future imaging experiment. Verify camera/housing size, spectral bands, illumination and underwater attenuation. A terrestrial vegetation index is not automatically valid underwater. |
+
+Temperature sources: [Analog Devices DS18B20 datasheet](https://www.analog.com/media/en/technical-documentation/data-sheets/DS18B20.pdf), [Adafruit probe dimensions and enclosure limitations](https://www.adafruit.com/product/381). Depth source: [Blue Robotics Bar sensor installation guide](https://bluerobotics.com/learn/bar-sensors-guide/). No additional hardware has been purchased, assigned firmware pins or made a requirement for the image methods.
+
+Dissolved oxygen, nutrients and other chemistry can be valuable in broader studies, but they need their own suitable instruments or partner laboratory samples. They are not part of this robot's present analysis requirements. Existing Carlson/CCME calculations remain readable for archived requests; they are removed from the main camera-method selector and are not the project's research direction.
 
 ## Validation and research readiness
 
-### Evidence already recorded
+The implemented workflow provides reproducible video sampling, green-rule baseline diagnostics, raw review images, random point plans, a local annotation page, complete-label/image-hash checks, reviewed cover and video-count calculations, source-separated TDS, exports and calculation audits. The quality gates, taxonomy and sampling-unit declarations remain subject to reviewer judgment.
 
-Software fixtures cover known green areas, padding/ROI denominators, dark/zero-cover distinction, color-rule failures, mask errors despite equal cover, sensor matching, invalid media, malformed requests, command idempotence and reconstruction failure paths. Assessment tests cover reference equations, unit handling, zero-denominator/range objectives, missing inputs, provenance, simulation exclusions and audit determinism.
+The stock footage has no ground-truth ecology or chemistry. No researcher labels have been created by watching it during this work. Synthetic tests can verify denominators, missing-data behavior, reproducibility, provenance and software integration. They do not validate recognition of real plants or animals. Real held-out labels, sensor calibration and an appropriate field design remain necessary for publishable biological conclusions. The next automatic-CV milestone is an independently labeled freshwater development/evaluation dataset, followed by training and ecological-output validation.
 
-The final pre-commit verification on 19 November 2026 passed all 52 Python tests and all 45 dashboard tests in complete suite runs. Integration evidence under `outputs/dashboard-runtime/` includes `integration-checks.json`, `ecological-assessment-checks.json`, `assessment-validation.json` and `usability-fixes-checks.json`. Logs/artifacts are local ignored outputs, not distributed research datasets.
+## Key scholarly and methodological references
 
-Both supplied clips were processed numerically without playing them or displaying frames. The original ecology verification sampled 19 landscape views and 17 portrait views; masks, PNG encoding, counts and source labels passed integrity checks. These tests establish software behavior, not biological accuracy. The portrait clip's reserved color tags required a recorded BT.709 fallback.
-
-Actual CPU COLMAP 4.2.1 runs used 3 fps, at most 30 frames and maximum dimension 1000:
-
-| Stock clip | Registered views | Sparse points | Observations | Mean track length | Mean reprojection error |
-| --- | --- | --- | --- | --- | --- |
-| `14396264_1920_1080_60fps.mp4` | 29/29 | 14,273 | 128,643 | 9.013032 | 0.498299 px |
-| `16770126_2160_3840_60fps.mp4` | 25/25 | 8,923 | 81,464 | 9.129665 | 0.356076 px |
-
-Saved artifacts are under `outputs/colmap-validation-817db1d1d7634fefb8ce547443db5347/`. Independent checks compared source hashes, native model-analyzer results, binary counts, PLY payload sizes and finite coordinates. Physical scale and accuracy against external reference geometry remain unverified. Download provenance for the [official 4.2.1 release](https://github.com/colmap/colmap/releases/tag/4.2.1) is retained in `.tools/colmap-source.json`; archive SHA-256: `c493d88cb4a43f21afba42cb55bf786e5434a0420e73db0ba1454c5d8b3686ae`.
-
-### Required ecological validation
-
-1. Collect independent plant/background/ambiguous labels or known tank quadrats through the intended camera and housing. Record visible-bottom region, scale, date, depth, position, lighting and calibration.
-2. Split by independent scene/transect/session before tuning. Keep correlated neighboring frames in one split. Freeze thresholds before held-out evaluation.
-3. Report coverage MAE and signed bias in percentage points, mask precision/recall/IoU, sample count and rejection rate. Missing evidence stays distinct from zero plants. Report performance by independent scene; confidence intervals need grouped sampling rather than treating frames as independent replicates.
-4. Include brown plants, green water/objects, blur, darkness, glare, occlusion, non-bottom views and sensor mismatch. Validate calibration separately with reference solutions and held-out concentrations/temperatures.
-5. For lakewide cover, use representative spatial sampling and account for repeated/unequal footprints. For condition assessment, add relevant field/laboratory chemistry, oxygen/temperature profiles, taxonomy and an approved site-specific monitoring plan.
-
-```text
-cover error = predicted cover % - reference cover %
-MAE = mean(abs(cover error)); bias = mean(cover error)
-precision = TP / (TP + FP); recall = TP / (TP + FN)
-IoU = TP / (TP + FP + FN)
-```
-
-The mask evaluator returns null for undefined ratios and hashes the inputs. Equal empty masks have zero cover error. Manifest checks reject declared clip leakage and self-reference but cannot independently establish scene independence. Synthetic fixtures establish arithmetic, while held-out real labels establish performance within their evaluated scope.
-
-This is a research prototype with inspectable calculations. Researchers can examine image observations and calculate published indices from suitable supplied measurements. Field vegetation accuracy, sensor accuracy, representative sampling, aquatic-life measurement, hardware behavior and environmental benefit remain to be demonstrated. Nutrient removal and multispectral analysis are research directions without implemented efficacy claims.
+- Kohler, K. E., & Gill, S. M. (2006). *Coral Point Count with Excel extensions (CPCe): A Visual Basic program for the determination of coral and substrate coverage using random point count methodology*. **Computers & Geosciences, 32**, 1259–1269. [DOI](https://doi.org/10.1016/j.cageo.2005.11.009). Supports image-point measurement; marine application, adapted here.
+- Beijbom, O., et al. (2015). *Towards Automated Annotation of Benthic Survey Images: Variability of Human Experts and Operational Modes of Automation*. **PLOS ONE, 10**, e0130312. [DOI](https://doi.org/10.1371/journal.pone.0130312). Supports observer comparisons and evaluated human/automation workflows.
+- Jansen, A., et al. (2024). *Monitoring tropical freshwater fish with underwater videography and deep learning*. **Marine and Freshwater Research, 75**, MF23166. [DOI](https://doi.org/10.1071/MF23166). Supports freshwater video counts and validation of the derived ecological metric.
+- *Multi-Scale Spectral Separability of Submerged Aquatic Vegetation Species in a Freshwater Ecosystem* (2021). **Frontiers in Environmental Science, 9**, 760372. [DOI](https://doi.org/10.3389/fenvs.2021.760372). Supports freshwater reference imagery and limits of species discrimination.
+- Ronneberger, O., Fischer, P., & Brox, T. (2015). *U-Net: Convolutional Networks for Biomedical Image Segmentation*. [Author manuscript](https://arxiv.org/abs/1505.04597). Architecture background, not evidence of freshwater model accuracy.
+- Islam, M. J., et al. (2020). *Semantic Segmentation of Underwater Imagery: Dataset and Benchmark*. [Author manuscript](https://arxiv.org/abs/2004.01241). Underwater segmentation dataset/model context; domain mismatch requires evaluation.
+- Lamirand, M., et al. (2022). *Analysis of Benthic Survey Images via CoralNet: A Summary of Standard Operating Procedures and Guidelines*. NOAA PIFSC Administrative Report H-22-03. [Record and DOI](https://repository.library.noaa.gov/view/noaa/42469). Operational annotation guidance; marine classes are not copied as freshwater standards.
+- Schönberger, J. L., & Frahm, J.-M. (2016). *Structure-from-Motion Revisited*. **CVPR**, 4104–4113. [Primary paper](https://openaccess.thecvf.com/content_cvpr_2016/html/Schonberger_Structure-From-Motion_Revisited_CVPR_2016_paper.html). Reconstruction method, not ecological validation.
 
 ## Engineering references
 
-These official implementation references support the hardware guide; they do not establish wet-operation performance:
-
-- [Freenove WROVER camera pin map](https://github.com/Freenove/Freenove_ESP32_WROVER_Board/blob/main/C/Sketches/Sketch_06.1_CameraWebServer/camera_pins.h): board camera assignment.
-- [Espressif MCPWM](https://docs.espressif.com/projects/esp-idf/en/v5.3/esp32/api-reference/peripherals/mcpwm.html): peripheral used for fin pulses independently of camera LEDC.
-- [Espressif GPIO restrictions](https://docs.espressif.com/projects/esp-idf/en/v4.4.2/esp32/api-reference/peripherals/gpio.html): reserved, input-only and boot-strapping constraints.
-- [Espressif ADC guidance](https://docs.espressif.com/projects/esp-hardware-design-guidelines/en/latest/esp32/schematic-checklist.html#adc): ADC/interface considerations.
-- [ESP32 camera SCCB driver](https://github.com/espressif/esp32-camera/blob/master/driver/sccb-ng.c): I2C-controller allocation requiring coordination with the MPU bus.
+The [hardware guide](GUIDE.md#esp32-hardware) retains the current board/pin restrictions and disconnect behavior. Official references are the [Freenove camera pin map](https://github.com/Freenove/Freenove_ESP32_WROVER_Board/blob/main/C/Sketches/Sketch_06.1_CameraWebServer/camera_pins.h), [Espressif MCPWM](https://docs.espressif.com/projects/esp-idf/en/v5.3/esp32/api-reference/peripherals/mcpwm.html), [GPIO restrictions](https://docs.espressif.com/projects/esp-idf/en/v4.4.2/esp32/api-reference/peripherals/gpio.html), [ADC guidance](https://docs.espressif.com/projects/esp-hardware-design-guidelines/en/latest/esp32/schematic-checklist.html#adc), and [camera SCCB driver](https://github.com/espressif/esp32-camera/blob/master/driver/sccb-ng.c). A planned sensor does not imply a free or verified interface.

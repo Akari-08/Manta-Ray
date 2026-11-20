@@ -128,6 +128,8 @@ function renderEcology(detail) {
   byId('survey-observation-rows').replaceChildren(...tableRows);
   byId('survey-downloads').replaceChildren(...[
     link('DOWNLOAD CSV', detail.downloads?.csv), link('DOWNLOAD SUMMARY', detail.downloads?.summary),
+    link('DOWNLOAD REVIEW BUNDLE', detail.downloads?.review_bundle),
+    link('DOWNLOAD POINT LABELS', detail.downloads?.review_points),
   ].filter(Boolean));
   const overlays = Array.isArray(detail.overlays) ? detail.overlays : [];
   byId('survey-overlay-downloads').replaceChildren(...overlays.map((url, index) => link(`Overlay ${index + 1}`, url)).filter(Boolean));
@@ -162,7 +164,7 @@ export function initSurveyPanel({ token, onStop }) {
   function showScenario(report) {
     if (!savedEcology) return;
     if (scenarioCsvUrl) { URL.revokeObjectURL(scenarioCsvUrl); scenarioCsvUrl = null; }
-    if (report.method_id !== 'camera_tds' || !report.generated_tds?.length) {
+    if (!report.generated_tds?.length) {
       renderEcology(savedEcology);
       return;
     }

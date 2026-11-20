@@ -133,7 +133,7 @@ class AssessmentTests(unittest.TestCase):
         json.dumps(report, allow_nan=False)
 
     def test_ccme_units_and_temporal_repetition(self):
-        request = next(item["example"] for item in catalog() if item["id"] == "ccme_wqi")
+        request = next(item["example"] for item in catalog(include_legacy=True) if item["id"] == "ccme_wqi")
         report = assess(request)
         self.assertTrue(report["result"]["earlier_minimum_4_parameters_4_times_met"])
         self.assertFalse(report["result"]["preferred_2017_parameter_count_met"])
@@ -171,7 +171,7 @@ class AssessmentTests(unittest.TestCase):
         self.assertTrue(all(140 <= item["value"] <= 160 for item in first["generated_tds"]))
         self.assertEqual([item["value"] for item in first["generated_tds"]],
                          [simulated_tds_value(index) for index in range(3)])
-        self.assertEqual(first["engine_version"], "1.1.0")
+        self.assertEqual(first["engine_version"], "2.0.0")
         reversed_report = assess(before, {}, list(reversed(rows)))
         self.assertEqual({item["timestamp_s"]: item["value"] for item in first["generated_tds"]},
                          {item["timestamp_s"]: item["value"] for item in reversed_report["generated_tds"]})

@@ -136,8 +136,8 @@
                 <p class="survey-note">Candidate green cover describes image pixels. Vegetation identification needs reference labels. View quality measures recording conditions.</p>
                 <p id="survey-life-status" class="survey-note">Aquatic life: not assessed. An organism detector and tracker are required.</p>
                 <section class="assessment-panel" aria-labelledby="assessment-title">
-                  <h4 id="assessment-title">Ecological assessment</h4>
-                  <label class="assessment-label" for="assessment-method">Calculation method</label>
+                  <h4 id="assessment-title">Camera-led ecological observations</h4>
+                  <label class="assessment-label" for="assessment-method">Observation method</label>
                   <select id="assessment-method" disabled><option value="">Loading methods…</option></select>
                   <p id="assessment-description" class="survey-note"></p>
                   <p id="assessment-required" class="survey-note"></p>
@@ -154,11 +154,11 @@
                       </div>
                     </div>
                     <details class="assessment-research-inputs">
-                      <summary>Measurements and reference objectives</summary>
-                      <p class="survey-note">Provide measurements with parameter, value, unit, source, method, sample_id and sampled_at. Objectives require parameter, unit, direction, value and reference.</p>
+                      <summary>Reviewed observations and sampling metadata</summary>
+                      <p class="survey-note">Photoquadrats use point_frames from a completed review bundle. Aquatic-life counts use video_review with taxa, timestamped counts, reviewer and camera mode. Paste the request object from the packaged JSON. TDS remains supporting context; these methods do not calculate a universal lake-health score.</p>
                       <button id="assessment-example" type="button">LOAD SIMULATED EXAMPLE</button>
                       <label class="assessment-label" for="assessment-inputs">Research inputs · JSON</label>
-                      <textarea id="assessment-inputs" rows="9" spellcheck="false">{"measurements":[],"objectives":[]}</textarea>
+                      <textarea id="assessment-inputs" rows="9" spellcheck="false">{}</textarea>
                     </details>
                     <button id="assessment-calculate" type="submit" disabled>CALCULATE ASSESSMENT</button>
                   </form>

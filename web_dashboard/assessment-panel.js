@@ -1,6 +1,6 @@
 const element = id => document.getElementById(id);
 const title = value => String(value).replaceAll('_', ' ');
-const researchMetadataFields = ['site_id', 'period', 'context'];
+const researchMetadataFields = ['site_id', 'period', 'context', 'point_frames', 'video_review'];
 
 function researchMetadata(input) {
   return Object.fromEntries(researchMetadataFields.filter(key => Object.hasOwn(input, key)).map(key => [key, input[key]]));
@@ -86,6 +86,8 @@ function renderReport(payload) {
     ['Calculation steps', report.steps], ['Excluded inputs', report.excluded_inputs],
     ['Missing inputs', report.missing_inputs], ['Assumptions', report.assumptions],
     ['Limitations', report.limitations], ['Recommendations', report.recommendations],
+    ['Supporting image and TDS observations', report.supporting_observations],
+    ['Annotation workflow', report.review_workflow],
   ]) evidenceSection(evidence, heading, value);
   evidenceSection(evidence, 'Method record', { engine_version: report.engine_version, input_sha256: report.input_sha256 });
   const downloads = element('assessment-downloads');
@@ -113,8 +115,7 @@ export function initAssessmentPanel({ token, onReport = () => {} }) {
 
   function controls() {
     element('assessment-calculate').disabled = calculating || !selected || !methods.length;
-    const camera = element('assessment-method').value === 'camera_tds';
-    element('assessment-tds-controls').hidden = !camera;
+    element('assessment-tds-controls').hidden = false;
     element('assessment-tds-options').hidden = !element('assessment-simulate-tds').checked;
   }
 
@@ -144,14 +145,15 @@ export function initAssessmentPanel({ token, onReport = () => {} }) {
       if (!Array.isArray(input.measurements || []) || !Array.isArray(input.objectives || [])) throw new Error('Measurements and objectives must be JSON arrays.');
       const metadata = researchMetadata(input);
       const hasMetadata = Object.values(metadata).some(value => value !== null && value !== undefined &&
-        (typeof value !== 'string' || value.trim().length > 0));
+        (typeof value !== 'string' || value.trim().length > 0) &&
+        (!Array.isArray(value) || value.length > 0));
       const hasResearchInputs = (input.measurements?.length || input.objectives?.length || input.tds_reference || hasMetadata);
       const customSimulation = element('assessment-simulate-tds').checked &&
         (Number(element('assessment-seed').value) !== 42 || Number(element('assessment-baseline').value) !== 150 || Number(element('assessment-variation').value) !== 10);
       if (!token() && !hasResearchInputs && !customSimulation) {
         const query = new URLSearchParams({ method });
         if (element('assessment-include-simulated').checked) query.set('include_simulated', '1');
-        if (method === 'camera_tds' && element('assessment-simulate-tds').checked) {
+        if (element('assessment-simulate-tds').checked) {
           if (!element('assessment-include-simulated').checked) throw new Error('Enable the simulated scenario checkbox to include generated TDS.');
           query.set('simulate_tds', '1');
         }
@@ -162,7 +164,7 @@ export function initAssessmentPanel({ token, onReport = () => {} }) {
         const include = element('assessment-include-simulated').checked;
         const body = { ...metadata, method, include_simulated: include, measurements: input.measurements || [], objectives: input.objectives || [] };
         if (input.tds_reference) body.tds_reference = input.tds_reference;
-        if (method === 'camera_tds' && element('assessment-simulate-tds').checked) {
+        if (element('assessment-simulate-tds').checked) {
           if (!include) throw new Error('Enable the simulated scenario checkbox to include generated TDS.');
           const seed = Number(element('assessment-seed').value);
           const baseline = Number(element('assessment-baseline').value);
@@ -179,7 +181,9 @@ export function initAssessmentPanel({ token, onReport = () => {} }) {
       if (disposed || current !== generation || selected !== id) return;
       renderReport(payload);
       onReport(payload.assessment || payload);
-      feedback('Assessment calculated. Expand the trace to review inputs and exclusions.');
+      feedback((payload.assessment || payload).status === 'awaiting_annotations' ?
+        'Reviewed camera observations are required. Download the review bundle from a new analysis run, label the points, then supply the packaged request fields below.' :
+        'Observations calculated. Expand the trace to review inputs and exclusions.');
     } catch (error) {
       if (!disposed && current === generation) {
         element('assessment-status').textContent = 'Calculation unavailable';
@@ -241,7 +245,7 @@ export function initAssessmentPanel({ token, onReport = () => {} }) {
       return option;
     }));
     select.disabled = !methods.length;
-    if (methods.some(item => item.id === 'camera_tds')) select.value = 'camera_tds';
+    if (methods.some(item => item.id === 'benthic_point_cover')) select.value = 'benthic_point_cover';
     methodChanged();
   }).catch(error => { if (!disposed) feedback(error.message); });
 

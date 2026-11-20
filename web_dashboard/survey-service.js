@@ -257,7 +257,7 @@ function createSurveyService({ root, python, colmap } = {}) {
       if (job.mode !== 'reconstruction') {
         job.stage = 'ecology';
         const destination = path.join(output, 'ecology');
-        const args = ['-m', 'manta_ray.ecology', clip.filename, '--output', destination, '--max-samples', '30', '--interval', '1', '--video-source', 'unknown'];
+        const args = ['-m', 'manta_ray.ecology', clip.filename, '--output', destination, '--max-samples', '30', '--interval', '1', '--video-source', 'unknown', '--export-review', '--review-points', '50'];
         if (tds !== undefined) args.push('--simulated-tds-ppm', String(tds));
         await runPython(args);
         job.output.ecology = opaque('ecology', path.relative(root, destination));
@@ -289,9 +289,19 @@ function createSurveyService({ root, python, colmap } = {}) {
     await walk(path.join(item.directory, 'overlays'), 0, async filename => {
       if (path.extname(filename).toLowerCase() === '.png' && await safeFile(filename, item.directory)) overlays.push(artifact(filename, 'image/png'));
     });
+    const reviewDownloads = {};
+    for (const [key, filename, type] of [
+      ['review_bundle', 'review-bundle.zip', 'application/zip'],
+      ['review_points', 'review-points.csv', 'text/csv'],
+      ['point_plan', 'point-plan.json', 'application/json'],
+    ]) {
+      const candidate = path.join(item.directory, filename);
+      if (await safeFile(candidate, item.directory)) reviewDownloads[key] = artifact(candidate, type);
+    }
     return { summary: item.summary, rows, overlays, downloads: {
       csv: artifact(csv, 'text/csv'),
       summary: artifact(path.join(item.directory, 'summary.json'), 'application/json'),
+      ...reviewDownloads,
     } };
   }
 

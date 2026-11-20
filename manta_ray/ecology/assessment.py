@@ -1,4 +1,4 @@
-"""Auditable Carlson TSI, CCME WQI, and camera/TDS screening calculations."""
+"""Camera-led ecological observations, supporting TDS and archived index compatibility."""
 
 import argparse
 from collections import Counter, defaultdict
@@ -11,8 +11,9 @@ from statistics import mean, median
 import sys
 
 from .simulation import simulated_tds_value, simulation_metadata
+from .image_survey import METHODS as IMAGE_METHODS, assess_images, catalog as image_catalog
 
-VERSION = "1.1.0"
+VERSION = "2.0.0"
 NALMS = "https://www.nalms.org/secchidipin/monitoring-methods/trophic-state-equations/"
 CCME = "https://ccme.ca/en/res/wqimanualen.pdf"
 CONDUCTIVITY = "https://archive.epa.gov/water/archive/web/html/vms59.html"
@@ -30,7 +31,7 @@ def _example_measurement(parameter, value, unit, sample_id="demo-1", day=1):
             "sample_id": sample_id, "sampled_at": f"2026-06-{day:02d}"}
 
 
-def catalog():
+def _legacy_catalog():
     """Describe inputs and provide explicitly simulated, runnable request examples."""
     ccme_measurements = [
         _example_measurement(parameter, value, unit, f"demo-{day}", day)
@@ -494,6 +495,19 @@ def _camera(report, request, summary, rows, measurements):
     return tds
 
 
+def catalog(include_legacy=False):
+    """Offer methods supported by cameras/TDS; retain old calculations for archived requests."""
+    legacy = _legacy_catalog()
+    context = {**legacy[0], "name": "Image quality and TDS context (baseline)",
+               "scope": "Supporting observations; no ecological classification",
+               "description": "Recording diagnostics, unvalidated green-pixel hints and sourced TDS. Use reviewed photoquadrats or video counts for biological observations."}
+    methods = image_catalog() + [context]
+    if include_legacy:
+        methods.extend({**item, "legacy": True, "scope": "Archived optional-input calculation; not supported by the onboard sensor set"}
+                       for item in legacy[1:])
+    return methods
+
+
 def assess(request, summary=None, rows=None):
     """Return a deterministic calculation audit, including missing and excluded evidence."""
     if not isinstance(request, dict):
@@ -502,14 +516,26 @@ def assess(request, summary=None, rows=None):
     rows = [] if rows is None else rows
     if not isinstance(summary, dict) or not isinstance(rows, list):
         raise ValueError("summary must be an object and rows must be a list")
-    methods = {item["id"]: item for item in catalog()}
+    methods = {item["id"]: item for item in catalog(include_legacy=True)}
     method = request.get("method")
     if method not in methods:
-        raise ValueError("Unknown method; choose camera_tds, carlson_tsi or ccme_wqi")
+        raise ValueError("Unknown method for ecological observations")
     if "include_simulated" in request and not isinstance(request["include_simulated"], bool):
         raise ValueError("include_simulated must be true or false")
     if request.get("site_id") is not None and not isinstance(request["site_id"], str):
         raise ValueError("site_id must be text")
+    if method in IMAGE_METHODS:
+        report = assess_images(request, summary, rows, VERSION)
+        context_request = {key: request[key] for key in ("include_simulated", "simulate_tds", "measurements", "tds_reference", "site_id") if key in request}
+        context = assess({**context_request, "method": "camera_tds"}, summary, rows)
+        report["supporting_observations"] = {key: context["result"][key] for key in ("imagery", "tds_ppm", "tds_reference_comparison")}
+        report["supporting_observations"]["data_origin"] = context["data_origin"]
+        report["supporting_observations"]["chemistry_affects_biological_metrics"] = False
+        report["generated_tds"] = context.get("generated_tds", [])
+        report["review_workflow"] = summary.get("review_workflow")
+        if context["scenario"]:
+            report["supporting_observations"]["scenario"] = True
+        return report
     canonical = json.dumps({"request": request, "summary": summary, "rows": rows}, sort_keys=True, separators=(",", ":"), allow_nan=False)
     request = {"include_simulated": False, **request}
     entry = methods[method]

@@ -15,7 +15,7 @@ Vegetation mapping and water quality monitoring are the environmental objectives
 | Survey analysis | Measure vegetation cover, retain water quality observations, and reconstruct surveyed features with COLMAP. |
 | Dashboard | Provide mission controls, vehicle status, recorded observations, selectable ecological assessment methods, and reconstruction viewing. |
 
-The first physical prototype will float across a shallow tank and survey artificial vegetation patches with known coverage. This allows image analysis and propulsion to be evaluated before adding depth control. The preliminary hardware includes DS3218MG fin servos, an ESP32/camera, temperature and TDS sensors, and a battery to be selected. The subsystems can be tested independently.
+The first physical prototype will float across a shallow tank and survey artificial vegetation patches with known coverage. This allows image analysis and propulsion to be evaluated before adding depth control. The sensing baseline is cameras, a TDS probe and an MPU; the vehicle also uses DS3218MG fin servos, an ESP32 and a battery to be selected. Optional sensor proposals are kept separate in the research document. The subsystems can be tested independently.
 
 Validation will cover movement and steering, image clarity during fin motion, sensor readings against references, sound measurements in air and water, and comparison of estimated plant cover with independently measured cover.
 
@@ -37,7 +37,7 @@ Open [the dashboard](http://127.0.0.1:3000). The launcher starts the local backe
 - [GUIDE.md](GUIDE.md): setup, video processing, assessment inputs, APIs, firmware, and verification commands.
 - [research.md](research.md): scientific methods, scholarly and official sources, validation results, and research limitations.
 
-The implementation currently supports recorded-video green-cover screening, traceable TDS observations and simulated profiles, Carlson TSI and CCME WQI calculations from supplied measurements, sparse COLMAP reconstruction, and local telemetry/control integration. Candidate green cover is calculated from video pixels; its accuracy as vegetation cover still needs independent validation. The stock clips have unknown ecological condition, so their imagery and simulated chemistry cannot establish actual lake health.
+The analysis follows a camera-led ecological survey: reproducible image sampling, an offline random-point annotation tool, reviewed vegetation/substrate cover, reviewed aquatic-life video counts, and source-separated TDS context. Sparse COLMAP reconstruction and local telemetry/control complete the supporting pipeline. Automatic green-pixel screening remains a development baseline; a trained vegetation or animal model still needs independent freshwater validation. The stock clips have unknown ecological condition, and simulated TDS supplies no evidence about their real chemistry. See the [research pipeline](research.md#full-data-pipeline) for acquisition, CV development, validation and ecological interpretation.
 
 ## Repository layout
 

@@ -255,7 +255,7 @@ test('both-mode job publishes ecology before reporting reconstruction failure', 
 test('actual FFmpeg ecology CLI publishes results through survey API', {
   skip: !python || spawnSync('ffmpeg', ['-version'], { windowsHide: true }).status !== 0,
 }, async t => {
-  const { root, get, post } = await fixture(t);
+  const { root, get, post, base } = await fixture(t);
   await fs.cp(path.resolve(__dirname, '..', 'manta_ray'), path.join(root, 'manta_ray'), {
     recursive: true, filter: source => !source.includes('__pycache__'),
   });
@@ -279,4 +279,16 @@ test('actual FFmpeg ecology CLI publishes results through survey API', {
   assert.equal(new Set(details.value.rows.map(row => row.tds_ppm)).size, 2);
   assert.equal(details.value.summary.water.input_dataset_summary.simulated_profile.baseline_ppm, 220);
   assert.equal(details.value.rows[0].vegetation_cover_pct, null);
+  assert.equal(details.value.summary.ecological_assessment.method_id, 'benthic_point_cover');
+  assert.equal(details.value.summary.ecological_assessment.status, 'awaiting_annotations');
+  assert.equal(details.value.summary.review_workflow.point_count, 100);
+  const bundle = await fetch(base + details.value.downloads.review_bundle);
+  assert.equal(bundle.status, 200);
+  assert.equal(bundle.headers.get('content-type'), 'application/zip');
+  assert.equal(Buffer.from(await bundle.arrayBuffer()).subarray(0, 2).toString(), 'PK');
+  const labels = await fetch(base + details.value.downloads.review_points);
+  assert.equal(labels.status, 200);
+  const labelRows = parseCSV(await labels.text());
+  assert.equal(labelRows.length, 100);
+  assert.ok(labelRows.every(row => row.label === null));
 });

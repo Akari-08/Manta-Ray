@@ -190,6 +190,7 @@ test('real Python scientific engine catalog and assessment execute through HTTP'
   const catalog = await get('/api/ecology/methods');
   assert.equal(catalog.status, 200);
   assert.equal(catalog.value.length, 3);
+  assert.deepEqual(catalog.value.map(item => item.id), ['benthic_point_cover', 'video_maxn', 'camera_tds']);
   const result = await post({ method: 'camera_tds', include_simulated: false });
   assert.equal(result.status, 200, JSON.stringify(result.value));
   assert.equal(typeof result.value.assessment, 'object');
@@ -204,6 +205,33 @@ test('real Python scientific engine catalog and assessment execute through HTTP'
     assert.equal(computed.value.assessment.method_id, method.id);
     assert.equal(computed.value.assessment.status, 'computed');
     assert.equal(computed.value.assessment.scenario, true);
-    assert.equal(Number.isFinite(computed.value.assessment.result.score), true);
+    assert.equal(computed.value.assessment.result.score, null);
+    assert.equal(computed.value.assessment.result.category, 'observations');
   }
+});
+
+test('reviewed image observations persist through HTTP and reject the wrong video hash', { skip: !python }, async t => {
+  const sourceHash = 'a'.repeat(64);
+  const { post, get } = await fixture(t, { real: true, loadSurvey: async () => ({
+    summary: { source: { name: 'fixture.mp4', type: 'synthetic', sha256: sourceHash } }, rows: [],
+  }) });
+  const request = { method: 'benthic_point_cover', point_frames: [{
+    frame_id: 'frame_000000', timestamp_s: 0, sampling_unit: 'quadrat-1', source: 'measured',
+    source_sha256: sourceHash, image_sha256: 'b'.repeat(64), reviewer: 'test reviewer',
+    annotation_method: 'human_point_intercept', quality_status: 'usable', bottom_confirmed: true,
+    points: [{ point_id: 1, x_px: 10, y_px: 10, label: 'macrophyte' },
+             { point_id: 2, x_px: 20, y_px: 20, label: 'rock' }],
+  }] };
+  const computed = await post(request);
+  assert.equal(computed.status, 200, JSON.stringify(computed.value));
+  assert.equal(computed.value.assessment.result.macrophyte_cover_pct_classified, 50);
+  assert.equal(computed.value.assessment.result.score, null);
+  const persisted = await get(computed.value.report_url);
+  assert.equal(persisted.value.assessment.result.macrophyte_cover_pct_classified, 50);
+  const audit = await get(computed.value.audit_url);
+  assert.equal(audit.status, 200);
+  request.point_frames[0].source_sha256 = 'c'.repeat(64);
+  const mismatch = await post(request);
+  assert.equal(mismatch.status, 400);
+  assert.match(mismatch.value.error, /different source video/);
 });

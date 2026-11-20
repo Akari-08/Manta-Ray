@@ -32,7 +32,7 @@ For a manually managed server, copy `web_dashboard/.env.example` to `.env` only 
 
 Place clips in `media/` or `data/input/`. In **Recorded surveys**, select a saved run or submit a registered clip for image analysis, reconstruction, or both. One processing job runs at a time. Run labels include interval, region, sample count and ID: different runs of the same clip can have different medians. The reconstruction list hides extraction-only records when a matching completed model exists.
 
-Reports, CSVs, masks and PLY files are downloadable. Source videos and overlays do not load automatically. The displayed simulated-TDS scenario has its own CSV; original saved CSVs remain available and can contain older constant demo values. Aquatic-life measurements currently show **not assessed** because detection, tracking and species identification are unimplemented.
+Reports, CSVs, masks and PLY files are downloadable. Source videos and overlays do not load automatically. The displayed simulated-TDS scenario has its own CSV; original saved CSVs remain available and can contain older constant demo values. Automatic aquatic-life measurements remain **not assessed**; reviewed video counts are available through the ecological observation methods.
 
 ### Analyze a video
 
@@ -40,7 +40,7 @@ Reports, CSVs, masks and PLY files are downloadable. Source videos and overlays 
 uv run --locked --offline --no-python-downloads python -m manta_ray.ecology media/14396264_1920_1080_60fps.mp4 --video-source stock --interval 0.5 --simulated-tds-ppm 150 --output outputs/survey-01
 ```
 
-Use a new output directory for each run. Outputs are `survey.csv`, `summary.json`, `report.md`, `assessment.json`, PNG overlays and PGM masks. Reports retain source SHA-256, video metadata, parameters and processing provenance. The processor samples frames numerically; no playback is required.
+Use a new output directory for each run. Add `--export-review` for the annotation bundle; `--review-points` and `--review-seed` control reproducible point sampling. Outputs are `survey.csv`, `summary.json`, `report.md`, `assessment.json`, PNG overlays and PGM masks. Reports retain source SHA-256, video metadata, parameters and processing provenance. The processor samples frames numerically; no playback is required.
 
 `candidate_green_cover_pct` is a green-pixel fraction, not validated plant cover. `vegetation_cover_pct` remains missing. Brightness/contrast gates distinguish rejected images from usable zero-green views. Passing these gates does not establish visible bottom or ecological accuracy. See the [research definitions](research.md#supported-observations).
 
@@ -83,39 +83,45 @@ uv run --locked --offline --no-python-downloads python -m manta_ray.reconstructi
 
 ## Assessment inputs
 
-The dashboard method selector explains each method, required inputs and limitations. The [research document](research.md#assessment-methods) defines the equations and interpretation. The standalone engine accepts an envelope with `request`, optional saved `summary`, and optional CSV-style `rows`:
+The method selector now offers **reviewed photoquadrat point cover**, **reviewed aquatic-life video counts**, and **image-quality/TDS context**. These use cameras, TDS and the existing motion context. The [research document](research.md#assessment-methods) explains the published measurement principles, their freshwater adaptation and the full CV pipeline. Existing Carlson/CCME requests remain compatible for archived data, but those methods are absent from the main selector.
+
+### Export and review image points
+
+```powershell
+uv run --locked --offline --no-python-downloads python -m manta_ray.ecology media/14396264_1920_1080_60fps.mp4 --video-source stock --interval 1 --max-samples 30 --export-review --review-points 50 --output outputs/survey-review-01
+Expand-Archive -LiteralPath outputs/survey-review-01/review-bundle.zip -DestinationPath outputs/review-01
+```
+
+New dashboard analysis jobs also export this bundle. Download it from Recorded surveys, extract the entire archive, and open `review.html` locally. It needs no server, installation or internet. Select a frame and enter reviewer, sampling unit/transect, bottom confirmation and annotation origin. Click a class to label the selected point; it advances to the next point. Click near another point to revisit it. Color hints are hidden by default and never fill labels. Save the CSV before closing: the tool has no automatic persistence. Replace the extracted `review-points.csv` with your saved copy.
+
+Label every planned point, using `unknown` for ambiguity and `not_bottom` for water column/obstruction. Rejected-quality frames remain excluded; the bottom checkbox records a reviewer declaration. Keep all original images and the point plan. No labels for the stock recordings have been invented by the software.
+
+```powershell
+uv run --locked --offline --no-python-downloads python -m manta_ray.ecology.image_survey --review-dir outputs/review-01 --labels outputs/review-01/review-points.csv --output outputs/reviewed-request-01.json
+uv run --locked --offline --no-python-downloads python -m manta_ray.ecology.assessment --input outputs/reviewed-request-01.json --output outputs/reviewed-result-01.json
+```
+
+Packaging checks image hashes, original point coordinates/identities, complete labels and consistent frame metadata. The result reports class counts, per-frame cover, sampling-unit means, unknown-label bounds and exclusions. These are image observations, not lakewide area or a universal health score. An all-unknown view has missing classified cover. Output files must be new.
+
+The packaging command creates an envelope with `request`. To use it in the dashboard, paste **only that request object** into Research inputs and calculate the photoquadrat method. The server also checks the source-video hash against the selected survey. Small dashboard runs fit the bounded request size; larger annotation packages can use the standalone CLI.
+
+### Aquatic-life observations
+
+`video_maxn` takes a `video_review` object containing source video SHA-256, reviewer, annotation method, camera mode, full-review declaration, start/end seconds, taxon labels and timestamped simultaneous counts. Every count record explicitly includes all declared taxa, including zeros. The catalog provides a complete runnable example:
 
 ```powershell
 uv run --locked --offline --no-python-downloads python -m manta_ray.ecology.assessment --catalog
-uv run --locked --offline --no-python-downloads python -m manta_ray.ecology.assessment --input request.json --output assessment.json
 ```
 
-`--catalog` provides runnable simulated examples. Output files must be new. A minimal scenario envelope is:
+For stationary fully reviewed footage, the engine calculates MaxN per taxon. Moving or partially reviewed footage yields a descriptive maximum visible count. It never sums appearances into unique animals, infers density, or labels broad taxon groups as species richness. Automatic fish detection remains unvalidated; reviewed counts are usable without downloading a model.
 
-```json
-{
-  "request": {
-    "method": "carlson_tsi",
-    "site_id": "example-site",
-    "include_simulated": true,
-    "measurements": [{
-      "parameter": "chlorophyll_a", "value": 20, "unit": "ug/L",
-      "source": "simulated", "method": "demonstration scenario",
-      "sample_id": "demo-1", "sampled_at": "2026-06-01"
-    }]
-  }
-}
-```
+### Provenance and simulation
 
-Methods are `camera_tds`, `carlson_tsi` and `ccme_wqi`. Measurements require all fields shown above; sources are `measured` or `simulated`. Values must be finite and nonnegative; Carlson values must be positive. Duplicate parameter/sample identities are rejected. Concentration conversion supports mg/L, ug/L and ng/L; Secchi depth supports m/cm. CCME keeps ppm and mg/L distinct, and other units must match exactly. Nitrate-ion and nitrate-as-nitrogen measurements need distinct parameter identities.
+The standalone engine accepts `{request, summary?, rows?}`. For assessment during video processing, `--assessment-input` accepts only the request object, alongside `--assessment-method` and optional `--include-simulated-assessment`. Photoquadrat requests use `point_frames`; video-count requests use `video_review`. `site_id`, `period` and `context` are declarations and do not establish location or filter data.
 
-CCME `objectives` require `parameter`, `unit`, `reference`, and `direction: "maximum"` or `"minimum"` with `value`. A `"range"` takes positive ordered `min_value`/`max_value`. Censored results such as `<0.05` need documented preprocessing; they are not exact numeric observations. `period` and `context` annotate the audit and do not filter samples.
+Simulated annotations are excluded by default. Explicit `include_simulated: true` labels the biological result as a scenario. Measured/reviewed biological observations and simulated TDS remain separate: a TDS scenario cannot alter cover or animal counts. All methods can retain supporting TDS via `simulate_tds: {"seed":42,"baseline_ppm":150,"variation_ppm":10}`. The existing `camera_tds` baseline can also accept supplied TDS measurements and references; it is a context summary, not a biological model.
 
-Simulated inputs are excluded by default. Opting in labels results **SIMULATION SCENARIO**, including mixed inputs. Camera/TDS scenarios accept `simulate_tds: {"seed":42,"baseline_ppm":150,"variation_ppm":10}`. Generation supersedes earlier simulated survey rows with an audit exclusion and preserves measured observations. The graph, table and scenario CSV use the same generated series.
-
-For assessment during video processing, add `--assessment-method`, `--assessment-input` and optionally `--include-simulated-assessment`. **That input file contains only the request object**, unlike the standalone engine's envelope.
-
-Audits retain equations, intermediate results, missing/excluded evidence, method/engine version, references, source labels and a canonical input SHA-256. User-supplied provenance and objectives require professional review.
+Audits retain input hashes, source labels, equations, intermediate results, excluded evidence and method/engine version. Reviewer identity, taxonomic judgment, sampling independence and site context still require professional review. Full semantic segmentation training and field recognition validation are future work, described in the [data pipeline](research.md#full-data-pipeline).
 
 ## Backend interfaces
 

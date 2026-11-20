@@ -1,0 +1,18 @@
+<!doctype html>
+<html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Manta Ray image-point review</title>
+<style>
+body{font:16px system-ui;max-width:1000px;margin:2rem auto;padding:0 1rem;background:#f7faf8;color:#183029}h1{font-size:1.6rem}.work{display:flex;gap:2rem;flex-wrap:wrap}canvas{width:min(90vw,560px);height:auto;image-rendering:auto;background:#111}aside{max-width:360px;flex:1}label{display:block;margin:.75rem 0}input,select,button{font:inherit;padding:.45rem}input[type=text]{width:90%}button{margin:.25rem}#labels{display:flex;flex-wrap:wrap}#quality,#hint{font-size:.9rem}#point{font-weight:600}
+</style>
+<h1>Reviewed image-point cover</h1>
+<p>Label what lies directly beneath each point. Use <strong>unknown</strong> for ambiguity and <strong>not bottom</strong> for water column/obstruction. Labels are never filled from color hints. Save the CSV before closing; this page has no server or automatic persistence.</p>
+<div class="work"><div><canvas id="image" width="320" height="320" aria-label="Review image with random annotation points"></canvas><p id="point"></p><button id="previous">Previous point</button><button id="next">Next point</button></div>
+<aside><label>Frame <select id="frame"></select></label><p id="quality"></p>
+<label>Reviewer <input id="reviewer" type="text" maxlength="256"></label>
+<label>Sampling unit / transect <input id="unit" type="text" maxlength="256"></label>
+<label><input id="bottom" type="checkbox"> I confirmed the region shows the bottom</label>
+<label>Annotation origin <select id="source"><option value="measured">Reviewed observations</option><option value="simulated">Synthetic / simulated labels</option></select></label>
+<div id="labels"></div><label><input id="hints" type="checkbox"> Show unvalidated color hint</label><p id="hint"></p></aside></div>
+<p id="progress"></p><button id="download">Save review-points.csv</button>
+<p>Macrophyte = identifiable aquatic plant; filamentous algae = visible algal growth identified with confidence; detritus = recognizable dead organic material. Do not infer species or chemistry from color. Retain raw images and the original point-plan.json for packaging and audit.</p>
+<script type="application/json" id="point-plan">__POINT_PLAN_JSON__</script><script src="point_review.js"></script></html>
