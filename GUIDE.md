@@ -28,6 +28,29 @@ The demo opens at [127.0.0.1:3000](http://127.0.0.1:3000) and needs ports 3000, 
 
 For a manually managed server, copy `web_dashboard/.env.example` to `.env` only if absent. Generate two different secrets with `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"`, assign them to `DEVICE_TOKEN` and `CONTROL_TOKEN`, keep `HOST=127.0.0.1`, and set `ALLOW_SIMULATOR=1`. Run `npm.cmd start` and `npm.cmd run simulate` in separate dashboard terminals. This mode requires entering the control token. Never commit `.env` or firmware secrets.
 
+### Temporary public dashboard and Roblox access
+
+Install [Cloudflare's `cloudflared` client](https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/downloads/) and ensure `cloudflared` is on PATH. With the `.env` and npm dependencies set up as above, `npm.cmd start` starts the dashboard and prints a temporary `https://...trycloudflare.com` link. It changes on restart; Ctrl+C stops the tunnel and dashboard. If the tunnel cannot start, the local dashboard stays available. Quick Tunnels depend on Cloudflare and are intended for testing, not a reliable production service. `npm.cmd run demo` remains local-only.
+
+The public link is **read-only**: commands, control leases, device connections, demo credentials and writes are blocked, even with a token. Anyone with the link can see telemetry, survey data and camera images, so don't use it for sensitive data. Local control still works as before. The link is not an authentication mechanism; for restricted or production access, use an authenticated gateway rather than a Quick Tunnel. If a device reports that the hostname does not exist, its DNS resolver may be blocking `trycloudflare.com`; try a different network or a public DNS resolver.
+
+To read telemetry from Roblox, enable **Allow HTTP Requests** in Studio's Game Settings and use a server-side Script. Replace the URL after each dashboard restart:
+
+```lua
+local HttpService = game:GetService("HttpService")
+local url = "https://YOUR-NEW-LINK.trycloudflare.com/api/state"
+local ok, result = pcall(function()
+    return HttpService:JSONDecode(HttpService:GetAsync(url))
+end)
+if ok then
+    print(result.connection, result.robot_id)
+else
+    warn("Dashboard request failed:", result)
+end
+```
+
+Roblox `HttpService` requests data from the API; it does not embed or render the dashboard website. The Roblox server needs internet access, and the computer running the dashboard must remain on.
+
 ## Recorded surveys
 
 Place clips in `media/` or `data/input/`. In **Recorded surveys**, select a saved run or submit a registered clip for image analysis, reconstruction, or both. One processing job runs at a time. Run labels include interval, region, sample count and ID: different runs of the same clip can have different medians. The reconstruction list hides extraction-only records when a matching completed model exists.
@@ -191,7 +214,7 @@ arduino-cli compile --fqbn esp32:esp32:esp32wrover firmware/manta_ray
 
 Copy `secrets.example.h` and `local_config.example.h` to their ignored local equivalents in `firmware/manta_ray/`. Inspect wiring, calibration and actual serial port before uploading. In Arduino IDE select ESP32 Wrover Module, PSRAM enabled and default 4 MB partitions.
 
-For hardware, stop simulation, set `ALLOW_SIMULATOR=0`, bind `HOST` to the computer's specific private Wi-Fi IPv4, and use that address as firmware `BACKEND_HOST`. Match port, robot ID and device token; connect both devices to the same 2.4 GHz network. If needed, restrict the Windows firewall allowance to the Private profile/local subnet. This HTTP/WS protocol is for a trusted isolated LAN, not Internet exposure; it has bearer authentication but no transport encryption. No firewall rules are created automatically.
+For hardware, stop simulation, set `ALLOW_SIMULATOR=0`, bind `HOST` to the computer's specific private Wi-Fi IPv4, and use that address as firmware `BACKEND_HOST`. Match port, robot ID and device token; connect both devices to the same 2.4 GHz network. If needed, restrict the Windows firewall allowance to the Private profile/local subnet. The direct HTTP/WS protocol is for a trusted isolated LAN; it has bearer authentication but no transport encryption. The optional public Quick Tunnel exposes only the read-only gateway described above. No firewall rules are created automatically.
 
 ### Pins and calibration
 

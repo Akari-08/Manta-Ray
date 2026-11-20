@@ -222,7 +222,25 @@ if (require.main === module) {
   try { process.loadEnvFile(path.join(__dirname, '.env')); } catch (error) { if (error.code !== 'ENOENT') throw error; }
   const port = Number(process.env.PORT || 3000), host = process.env.HOST || '127.0.0.1';
   if (!localIP(host) || !Number.isInteger(port) || port < 1 || port > 65535) throw new Error('HOST must be a specific private LAN/loopback IP; PORT must be 1..65535');
-  const server = createServer(); server.listen(port, host, () => console.log(`Manta Ray dashboard: http://${host}:${port} (LAN only; simulator ${process.env.ALLOW_SIMULATOR === '1' ? 'enabled' : 'disabled'})`));
-  for (const signal of ['SIGINT', 'SIGTERM']) process.on(signal, () => server.shutdown().then(() => process.exit(0)));
+  const server = createServer();
+  let tunnel;
+  let tunnelStartup;
+  let stopping = false;
+  server.listen(port, host, () => {
+    console.log(`Manta Ray dashboard: http://${host}:${port} (simulator ${process.env.ALLOW_SIMULATOR === '1' ? 'enabled' : 'disabled'})`);
+    tunnelStartup = require('./tunnel').startTunnel(port, { backendHost: host }).then(value => {
+      tunnel = value;
+    }).catch(error => {
+      console.error(`Tunnel unavailable: ${error.message}. The local dashboard remains available.`);
+    });
+  });
+  for (const signal of ['SIGINT', 'SIGTERM']) process.on(signal, async () => {
+    if (stopping) return;
+    stopping = true;
+    if (tunnelStartup) await tunnelStartup;
+    if (tunnel) await tunnel.stop();
+    await server.shutdown();
+    process.exit(0);
+  });
 }
 module.exports = { createServer, cameraURLs, localIP };
