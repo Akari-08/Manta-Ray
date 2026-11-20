@@ -34,6 +34,7 @@ Open [the dashboard](http://127.0.0.1:3000). The launcher starts the local backe
 
 ## Documentation
 
+- [documentation.md](documentation.md): presentation-ready explanation of computer vision and ecological analysis.
 - [GUIDE.md](GUIDE.md): setup, video processing, assessment inputs, APIs, firmware, and verification commands.
 - [research.md](research.md): scientific methods, scholarly and official sources, validation results, and research limitations.
 

@@ -257,7 +257,7 @@ function createSurveyService({ root, python, colmap } = {}) {
       if (job.mode !== 'reconstruction') {
         job.stage = 'ecology';
         const destination = path.join(output, 'ecology');
-        const args = ['-m', 'manta_ray.ecology', clip.filename, '--output', destination, '--max-samples', '30', '--interval', '1', '--video-source', 'unknown', '--export-review', '--review-points', '50'];
+        const args = ['-m', 'manta_ray.ecology', clip.filename, '--output', destination, '--max-samples', '30', '--interval', '1', '--video-source', 'unknown', '--export-review', '--review-points', '50', '--animal-detection'];
         if (tds !== undefined) args.push('--simulated-tds-ppm', String(tds));
         await runPython(args);
         job.output.ecology = opaque('ecology', path.relative(root, destination));
@@ -294,6 +294,7 @@ function createSurveyService({ root, python, colmap } = {}) {
       ['review_bundle', 'review-bundle.zip', 'application/zip'],
       ['review_points', 'review-points.csv', 'text/csv'],
       ['point_plan', 'point-plan.json', 'application/json'],
+      ['animals', 'animals.json', 'application/json'],
     ]) {
       const candidate = path.join(item.directory, filename);
       if (await safeFile(candidate, item.directory)) reviewDownloads[key] = artifact(candidate, type);

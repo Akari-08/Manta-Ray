@@ -18,6 +18,7 @@ from .metrics import FRAME_BYTES, WIDTH, analyze, numeric_fields, write_mask, wr
 from .water import WaterData, finite_number
 from .assessment import assess, catalog
 from .image_survey import export_frame, finish_export
+from .animals import detect as detect_animals
 
 FIELDS = (
     "timestamp_s", "status", "candidate_green_cover_pct", "vegetation_cover_pct",
@@ -250,6 +251,9 @@ def run(args):
             summary["review_workflow"] = finish_export(result, review_frames, args.review_seed)
         with (result / "survey.csv").open(encoding="utf-8", newline="") as stream:
             observations = list(csv.DictReader(stream))
+        if args.animal_detection:
+            summary["aquatic_life"] = detect_animals(source, result / "animals.json", args.interval, args.start,
+                                                     args.duration, min(args.max_samples, 30), args.animal_threshold)
         ecological_assessment = assess(assessment_request, summary, observations)
         summary["ecological_assessment"] = ecological_assessment
         (result / "assessment.json").write_text(
@@ -291,6 +295,8 @@ def main(argv=None):
     parser.add_argument("--video-source", choices=("unknown", "stock", "survey", "synthetic"), default="unknown")
     parser.add_argument("--site-id", default="")
     parser.add_argument("--assessment-method", choices=tuple(item["id"] for item in catalog(include_legacy=True)))
+    parser.add_argument("--animal-detection", action="store_true", help="Run the installed optional generic-fish model")
+    parser.add_argument("--animal-threshold", type=float, default=0.5)
     parser.add_argument("--export-review", action="store_true", help="Export raw review frames, random points and a blank annotation CSV")
     parser.add_argument("--review-points", type=int, default=50, help="Random eligible pixels per frame, 1..1000")
     parser.add_argument("--review-seed", type=int, default=42)
@@ -313,6 +319,8 @@ def main(argv=None):
     parser.add_argument("--ffprobe", default="ffprobe")
     args = parser.parse_args(argv)
     try:
+        finite_number(args.animal_threshold, "--animal-threshold", 0.001)
+        if args.animal_threshold > 1: raise ValueError("--animal-threshold must be at most 1")
         finite_number(args.interval, "--interval", 0.001)
         finite_number(args.start, "--start")
         finite_number(args.tds_tolerance, "--tds-tolerance")

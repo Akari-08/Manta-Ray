@@ -4,6 +4,51 @@ The research question is: **Can a small flapping-fin robot collect repeatable im
 
 [Project overview](README.md) · [Run the pipeline](GUIDE.md)
 
+## Interview and presentation quick reference
+
+**Current sensing:** cameras measure visible habitat/animals; TDS describes dissolved-solids context; the MPU measures vehicle motion. A water-quality score and an ecological-condition assessment are related but different products.
+
+### The two most useful additions
+
+1. **Dissolved oxygen (DO), with water temperature measured alongside it.** DO describes oxygen available to aquatic organisms; temperature affects oxygen solubility and interpretation. Prefer a temperature-equipped DO assembly, or budget a small separate temperature probe. MPU chip temperature is not water temperature. [EPA DO indicator](https://www.epa.gov/national-aquatic-resource-surveys/indicators-dissolved-oxygen), [USGS DO methods](https://www.usgs.gov/water-science-school/science/dissolved-oxygen-and-water)
+2. **pH.** Helps characterize acidity/alkalinity and conditions affecting organisms and chemical availability. It adds a different measurement from TDS. Compact DO and pH probes exist, but their conditioning boards, cables, maintenance access, wetted mounting and calibration solutions also need space. Fit must be checked against the actual hull CAD. [California field-measurement guidance](https://www.waterboards.ca.gov/water_issues/programs/swamp/swamp_iq/field_measurements.html), [mini DO candidate](https://atlas-scientific.com/probes/mini-d-o-probe/), [mini pH candidate](https://atlas-scientific.com/probes/mini-ph-probe/)
+
+**Can those produce “80/100”?** They could contribute DO, temperature and pH alongside measured TDS to a limited CCME WQI calculation, provided each parameter has an appropriate, cited objective. That is not automatically a professional whole-ecosystem rating. The CCME manual cautions against fewer than four parameters/four annual visits and recommends 8–20 relevant parameters. Use repeated calibrated observations, expert-selected objectives and supplemental laboratory samples where needed. Present a limited score as exploratory; never count camera greenness or MPU motion as extra chemical parameters. A defensible statement would be “CCME WQI 80/100 for the specified site, period, measured parameters and objectives,” with scope and limitations attached—not “the ecosystem is 80% healthy.” No measured project score exists yet. [CCME manual](https://ccme.ca/en/res/wqimanualen.pdf)
+
+### Vegetation, concisely
+
+- Record repeatable views of the bottom; distinguish plants, visible algae, substrate and unknown areas.
+- Estimate projected cover using reviewed random points or a validated segmentation mask: plant hits/pixels divided by the relevant visible-bottom denominator × 100.
+- Compare matched sites/seasons and, when identifiable, native/invasive species. More plants is not automatically worse; identity, habitat and change matter.
+- Current automatic greenness is a screening hint. Reviewed point-cover calculations work; a locally validated semantic vegetation model is still needed for automatic biological labels. [Image-point method](https://doi.org/10.1016/j.cageo.2005.11.009), [annotation validation](https://doi.org/10.1371/journal.pone.0130312)
+
+### Major assessment approaches
+
+| Approach | Measurements / equipment | How it determines condition |
+| --- | --- | --- |
+| **CCME Water Quality Index** | Repeated chemistry; relevant probes and/or laboratory samples, with cited local objectives | Combines how many parameters fail, how often, and by how much; 0–100, higher is better for the stated water use. [Manual](https://ccme.ca/en/res/wqimanualen.pdf) |
+| **Carlson Trophic State Index** | Chlorophyll-a (lab assay or calibrated fluorometer), total phosphorus (laboratory), Secchi transparency (disk) | Estimates algal trophic state; higher means greater trophic enrichment, not better health. Components need interpretation and are not interchangeable with TDS. [NALMS](https://www.nalms.org/secchidipin/monitoring-methods/trophic-state-equations/) |
+| **NSF Water Quality Index** | DO, pH, temperature change, nitrate, phosphate, turbidity, total solids, fecal coliform and biochemical oxygen demand; probes plus laboratory analyses | Combines parameter subindices with weights into a water-quality score; adding two probes does not supply the complete method. TDS is not automatically total solids. [EPA discussion of NSF WQI](https://www.epa.gov/sites/default/files/2020-08/documents/uaa-vol123.pdf) |
+| **Biological integrity indices (IBI)** | Standardized fish/invertebrate/plant identification and abundance surveys; cameras can contribute, but sampling/ID may need capture, specimens or microscopy | Compares community metrics with a regional, habitat-specific reference. A generic fish detector alone cannot calculate a validated IBI. [Minnesota lake IBI](https://www.dnr.state.mn.us/waters/surfacewater_section/lake_ibi/lake-index-biological-integrity.html) |
+| **EU Water Framework Directive ecological status** | Biological communities plus supporting chemistry and habitat/hydrology measurements | Combines defined assessment elements into high/good/moderate/poor/bad status; not simply a universal percentage. [European assessment framework](https://water.europa.eu/freshwater/europe-freshwater/water-framework-directive/ecological-status-of-surface-water/) |
+| **Image-based habitat monitoring** | Calibrated/repeatable camera surveys, reference labels, optional geometry and location | Measures vegetation/substrate cover, visible animal occurrence and change. A site/reference design supplies ecological interpretation; the camera does not identify dissolved contaminants. [Freshwater video-count research](https://doi.org/10.1071/MF23166) |
+
+### Questions for the marine biologist
+
+- Which habitat and ecological question should our camera survey target first?
+- Would DO/temperature and pH be the most useful additions for our site, or should we prioritize another parameter?
+- Which local objectives and reference sites are appropriate, and is a limited CCME WQI meaningful here?
+- What spatial spacing, revisit frequency and camera footprint make our sampling representative?
+- Which plant/animal groups can be identified reliably from our actual camera, and how should we validate the detector?
+- Which laboratory samples would best complement the robot when assessing nutrients, contamination or effects on wildlife?
+
+### Automatic animal detection
+
+New dashboard image-analysis jobs run **Community Fish Detector RF-DETR Medium (1024)** when the optional runtime is installed. The authors' within-family comparisons favored this model, and its training covers freshwater, marine and lab imagery. No model can be called best for our lake without local reference annotations. It detects generic fish, not every aquatic animal, species, disease or pollution effects. [Model authors and comparisons](https://github.com/filippovarini/community-fish-detector)
+
+The simple UI reports frames with fish candidates, maximum simultaneous detections and the selected confidence threshold, with a JSON download of timestamped boxes. The threshold is not measured accuracy. Counts are unreviewed, not unique fish or a standardized moving-vehicle population estimate. Stock-clip processing tests execution only; independently labeled local footage is still needed to quantify ecological accuracy.
+
+
 ## How researchers assess aquatic ecosystems
 
 Researchers define the habitat, ecological question and sampling design before selecting measurements. Typical questions concern changes in plant distribution, community composition, habitat structure, animal occurrence or water conditions relative to a reference. A naturally vegetated shallow lake can be in good ecological condition. High plant cover alone is not evidence of pollution, and clear-looking water does not establish ecological quality.
@@ -93,7 +138,7 @@ flowchart TD
 4. **Sample and check quality.** Use a declared temporal/spatial sampling rule and preserve rejected views. Brightness/contrast gates are recording checks. Calibrated camera/MPU mounting and synchronized angular velocity can help assess motion, but cannot prove the bottom is visible. White balancing or enhancement may aid interpretation; retain its parameters and validate that it preserves measurement performance.
 5. **Define the denominator.** Confirm visible bottom/canopy, exclude vehicle/water-column regions, and retain ambiguous areas. Use calibrated imaging geometry or reference quadrats for area. The MPU alone cannot supply camera-to-bottom distance. Repeated frames can show the same patch.
 6. **Annotate and review.** Export source-linked frames and fixed random points; retain labels, reviewer, class dictionary and unknowns. Double-annotate a subset, inspect disagreement and adjudicate it. Randomize review order where appropriate to reduce expectation effects. NOAA's image-analysis guidance illustrates an operational annotation/QA workflow; freshwater classes and acceptance criteria must be defined for this study. [NOAA CoralNet SOP, 2022](https://repository.library.noaa.gov/view/noaa/42469)
-7. **Develop CV.** Split by independent recording session/site before tuning, freeze a held-out set, train the selected classifier/segmenter, and version weights, code, parameters and training-data hashes. Compare with simple baselines. Measure domain shift across sites, cameras and seasons. No training runtime, weights or new datasets have been installed for the present implementation.
+7. **Develop CV.** Split by independent recording session/site before tuning, freeze a held-out set, train the selected classifier/segmenter, and version weights, code, parameters and training-data hashes. Compare with simple baselines. Measure domain shift across sites, cameras and seasons. A pretrained generic-fish model and isolated inference runtime are installed; no local vegetation training dataset or model has been created.
 8. **Validate ecological outputs.** Compare predicted cover with independent point/mask references using MAE/bias in percentage points and per-class precision/recall/IoU. Evaluate animal detection and the derived video counts against reviewed video, not only detection mAP. Report unknown/rejection rates and results by independent session. Set acceptance criteria before the final evaluation.
 9. **Aggregate and interpret.** Retain per-frame and per-transect results. Account for overlap and footprint/area weights before making lakewide estimates. Use repeated reference surveys to evaluate change. Statistical intervals must respect the independent sampling unit, not treat pixels or neighboring frames as independent lake replicates. Species, season and reference conditions determine ecological meaning.
 10. **Publish an inspectable record.** Export observations, raw input IDs/hashes, annotations, source labels, exclusions, methods and versioned calculations. The dashboard presents the evidence and missing information. Simulation stays labeled; a calculation audit does not prove field accuracy.

@@ -243,3 +243,13 @@ uv run --locked --offline --no-python-downloads python -m manta_ray.ecology.vali
 ```
 
 Paths are relative to the manifest. P5 PGM masks use 255 for plants, 0 for background and 128 for excluded pixels; crop/scale must match. Predictions cannot exclude reference-labeled pixels. The evaluator rejects declared train/test clip overlap, duplicate predictions and self-reference. [Research validation](research.md#validation-and-research-readiness) explains the metrics, evidence and remaining field work. Keep original media URLs, licenses and author credits when sharing footage.
+
+## Optional automatic fish detection
+
+The dashboard runs the installed Community Fish Detector on up to 30 numerical frame samples per new image-analysis job. Saved runs retain their original results; run a new analysis to get detections. The UI shows fish-candidate frames and maximum simultaneous count, and provides timestamped boxes through DOWNLOAD FISH DETECTIONS. No source frames are automatically displayed.
+
+For the CLI, add `--animal-detection` and optionally `--animal-threshold 0.5`. This uses a separate `.tools/animal-env` Python 3.12 environment with CPU PyTorch and `rfdetr==1.12.1`. Model weights and their verified SHA-256/source manifest are stored under `.tools/animals/`, ignored by Git. Missing dependencies are reported as not configured, not zero fish; inference errors remain separate from successful zero detections.
+
+This generic-fish detector does not identify species, all animal groups, pollutants or wildlife effects. Its local recognition accuracy requires independent labels. The confidence threshold is not a validation accuracy. See the interview quick reference in [research.md](research.md#interview-and-presentation-quick-reference) for ecological indices and sensor proposals.
+
+On another Windows checkout, run `.\scripts\setup-animal-detection.ps1` from the repository root to download the pinned model/runtime. This verifies the model checksum and records installed dependency versions. It requires network access and downloads model dependencies.

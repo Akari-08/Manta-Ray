@@ -110,7 +110,10 @@ function renderEcology(detail) {
   byId('survey-green-cover').textContent = isNumber(imagery.candidate_cover_median_pct) ? `${imagery.candidate_cover_median_pct.toFixed(1)}% median` : 'Unavailable';
   byId('survey-usable').textContent = `${numberText(imagery.usable_view_pct)}% · ${Number.isSafeInteger(imagery.sample_count) ? imagery.sample_count : rows.length} samples`;
   byId('survey-tds-source').textContent = sourceLabel;
-  byId('survey-life-status').textContent = 'Aquatic life: not assessed. Organism detection, tracking and species identification are not implemented.';
+  const life = summary.aquatic_life || {};
+  byId('survey-life-status').textContent = life.status === 'completed' ?
+    `Automatic fish detection: ${life.frames_with_fish}/${life.sampled_frames} sampled frames contain candidates · maximum visible together: ${life.maximum_simultaneous_fish} · threshold ${Math.round(life.confidence_threshold * 100)}%. Unreviewed; not unique animals or species identification.` :
+    `Automatic fish detection: ${life.status || 'not run'} · ${life.reason || 'Run a new image analysis to use the installed model.'}`;
   plot(byId('survey-cover-chart'), rows, 'candidate_green_cover_pct', [{ color: '#cae998', include: () => true }], 100);
   plot(byId('survey-tds-chart'), rows, 'tds_ppm', [
     { color: '#82c8dd', include: row => row.tds_source === 'measured' },
@@ -130,6 +133,7 @@ function renderEcology(detail) {
     link('DOWNLOAD CSV', detail.downloads?.csv), link('DOWNLOAD SUMMARY', detail.downloads?.summary),
     link('DOWNLOAD REVIEW BUNDLE', detail.downloads?.review_bundle),
     link('DOWNLOAD POINT LABELS', detail.downloads?.review_points),
+    link('DOWNLOAD FISH DETECTIONS', detail.downloads?.animals),
   ].filter(Boolean));
   const overlays = Array.isArray(detail.overlays) ? detail.overlays : [];
   byId('survey-overlay-downloads').replaceChildren(...overlays.map((url, index) => link(`Overlay ${index + 1}`, url)).filter(Boolean));
